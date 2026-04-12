@@ -42,3 +42,8 @@ logs/
 
 # Chroma DB
 chroma_db/
+
+# Uploads
+backend/uploads/
+*.pdf
+!README.MD
