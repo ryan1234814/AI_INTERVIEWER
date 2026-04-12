@@ -1,0 +1,45 @@
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+python-dotenv
+
+# AI & Orchestration
+langchain
+langchain-groq
+langgraph
+crewai
+agno
+chromadb
+sentence-transformers
+
+# Database
+sqlalchemy
+alembic
+
+# Voice & Utils
+deepgram-sdk
+aiofiles
+websockets
+httpx
+requests
+python-multipart
+
+# Security
+python-jose[cryptography]
+passlib[bcrypt]
+
+# Document Parsing
+PyPDF2
+pdfplumber
+
+# Scientific
+numpy
+soundfile
+
+# Testing & Linting
+pytest
+pytest-asyncio
+black
+flake8
+isort
