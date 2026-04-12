@@ -20,9 +20,9 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
     await websocket.accept()
     logger.info(f"WebSocket accepted for interview {interview_id}")
     
-    # Initialize Voice Manager
+    # Initialize Voice Manager (free EdgeTTS, no Deepgram needed)
     try:
-        voice_manager = VoiceManager(settings.GROQ_API_KEY, settings.DEEPGRAM_API_KEY)
+        voice_manager = VoiceManager(settings.GROQ_API_KEY)
     except Exception as e:
         logger.error(f"Failed to initialize VoiceManager: {e}")
         await websocket.send_text(json.dumps({"error": f"Internal Error: {str(e)}"}))
@@ -77,14 +77,19 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
                         context["history"] = history
                         context["goal"] = getattr(interview, "goal", "standard technical interview")
 
-                        # 1. Get AI Response
-                        ai_response = await voice_manager.agent.conduct_interview(transcript, context)
+                        # 1. Get AI Response (non-blocking)
+                        ai_response = await voice_manager.run_agent(transcript, context)
                         next_question = ai_response.get("next_question", "")
                         
                         # 2. Generate FREE Voice for the next question
                         audio_response = None
                         if next_question:
-                            audio_response = await voice_manager.tts.get_audio_stream(next_question)
+                            try:
+                                audio_response = await voice_manager.tts.get_audio_stream(next_question)
+                                logger.info(f"Generated {len(audio_response)} bytes of audio")
+                            except Exception as tts_err:
+                                logger.error(f"TTS generation failed: {tts_err}")
+                                audio_response = None
                             
                         result = {
                             "transcript": transcript,
@@ -119,19 +124,35 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
             # Update context for next round
             context["question_index"] += 1
             context["current_question"] = result["next_question"]
-            
+
+            # Save response to DB
+            try:
+                eval_data = result.get("evaluation", {})
+                db_response = models.InterviewResponse(
+                    interview_id=interview_id,
+                    question_text=context.get("current_question", ""),
+                    candidate_response=result.get("transcript", ""),
+                    evaluation_score=eval_data.get("technical_accuracy", 0) if isinstance(eval_data, dict) else 0,
+                    feedback=eval_data.get("feedback", "") if isinstance(eval_data, dict) else str(eval_data)
+                )
+                db.add(db_response)
+                db.commit()
+            except Exception as db_err:
+                logger.error(f"DB save error: {db_err}")
+                db.rollback()
+
             # Send response back to client
-            # 1. Send Transcript and text response
+            # 1. Send Audio first (so it arrives before or with the text)
+            if result.get("audio_response"):
+                logger.info(f"Sending {len(result['audio_response'])} bytes of audio to client")
+                await websocket.send_bytes(result["audio_response"])
+
+            # 2. Send Transcript and text response
             await websocket.send_text(json.dumps({
                 "transcript": result["transcript"],
                 "next_question": result["next_question"],
                 "evaluation": result["evaluation"]
             }))
-            
-            # 2. Send Audio Response
-            if result.get("audio_response"):
-                logger.info("Sending audio response back to client")
-                await websocket.send_bytes(result["audio_response"])
 
             # If interview completed, finalize in DB
             if context["question_index"] >= context["total_questions"]:

@@ -57,16 +57,28 @@ class VoiceInterviewerAgent:
             difficulty_label = self.difficulty_agent.get_difficulty_label()
 
             # 5. Determine Next Step (Follow-up vs New Question)
-            # Decide to probe deeper if completeness is low or topic is interesting
-            should_follow_up = validation_result.get("completeness", 10) < 7
+            # Check if user explicitly wants to move on
+            transcript_lower = transcribed_response.lower()
+            explicit_move_on = any(phrase in transcript_lower for phrase in [
+                "move on", "next question", "skip", "skip this", "let's move", 
+                "go to next", "proceed to", "move forward", "continue"
+            ])
+            
+            completeness = validation_result.get("completeness", 10)
+            logger.info(f"[Agent] completeness={completeness}, explicit_move_on={explicit_move_on}, transcript='{transcribed_response[:50]}...'")
+            
+            # Decide to probe deeper if completeness is low AND user didn't ask to move on
+            should_follow_up = (completeness < 7) and not explicit_move_on
             
             if should_follow_up:
+                logger.info("[Agent] Generating FOLLOW-UP question")
                 next_raw_question = self.follow_up_agent.generate_follow_up(
                     interview_context["current_question"],
                     transcribed_response,
                     job_context
                 )
             else:
+                logger.info("[Agent] Generating NEW question (not follow-up)")
                 # Retrieve context for new topic
                 skills = interview_context.get("candidate_skills", ["General Programming"])
                 # Extract skill related to the job if possible, or pick one
@@ -79,6 +91,7 @@ class VoiceInterviewerAgent:
                     count=1
                 )
                 next_raw_question = questions[0] if questions else "Can you tell me about your experience with " + target_skill + "?"
+                logger.info(f"[Agent] Generated new question: {next_raw_question[:60]}...")
 
             # 6. Goal Alignment
             goal = interview_context.get("goal", "standard technical interview")

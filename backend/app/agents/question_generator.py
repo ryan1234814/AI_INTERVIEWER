@@ -49,7 +49,8 @@ Return ONLY the questions.
             return questions[:count]
         except Exception as e:
             logger.error(f"Error generating questions: {e}")
-            raise e
+            # Return default questions instead of raising
+            return [f"Can you tell me about your experience with {candidate_skills[0] if candidate_skills else 'this technology'}?"]
 
     def generate_followup(self, response: str, question: str) -> str:
         template = """You are an interviewer. The candidate just gave an answer to your question.

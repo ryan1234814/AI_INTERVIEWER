@@ -1,13 +1,23 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 
+interface Message {
+  transcript?: string;
+  next_question?: string;
+  evaluation?: any;
+  error?: string;
+  status?: string;
+  audioBlob?: Blob;
+}
+
 export const useWebSocket = (interviewId: string) => {
   const [status, setStatus] = useState<'connecting' | 'connected' | 'disconnected'>('connecting');
-  const [messages, setMessages] = useState<any[]>([]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const socketRef = useRef<WebSocket | null>(null);
+  const pendingAudioRef = useRef<Blob | null>(null);
 
   useEffect(() => {
-    let reconnectTimer: NodeJS.Timeout;
-    
+    let reconnectTimer: ReturnType<typeof setTimeout>;
+
     const connect = () => {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host;
@@ -20,12 +30,25 @@ export const useWebSocket = (interviewId: string) => {
       };
 
       socket.onmessage = (event) => {
-        console.log(`[WebSocket] Message received:`, event.data);
+        // Handle binary audio data separately
+        if (event.data instanceof Blob) {
+          console.log(`[WebSocket] Received audio blob: ${event.data.size} bytes`);
+          pendingAudioRef.current = event.data;
+          return;
+        }
+
         try {
-          const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+          const data = JSON.parse(event.data);
           if (data.error) {
-               console.error(`[WebSocket] Server reported error: ${data.error}`);
+            console.error(`[WebSocket] Server reported error: ${data.error}`);
           }
+
+          // Attach pending audio blob to this question message
+          if (data.next_question && pendingAudioRef.current) {
+            data.audioBlob = pendingAudioRef.current;
+            pendingAudioRef.current = null;
+          }
+
           setMessages((prev) => [...prev, data]);
         } catch (err) {
           console.error(`[WebSocket] Failed to parse message:`, err);
@@ -39,7 +62,7 @@ export const useWebSocket = (interviewId: string) => {
       socket.onclose = (event) => {
         console.warn(`[WebSocket] Closed. Code: ${event.code}, Reason: ${event.reason}`);
         setStatus('disconnected');
-        reconnectTimer = setTimeout(connect, 3000); // Auto reconnect
+        reconnectTimer = setTimeout(connect, 3000);
       };
 
       socketRef.current = socket;
@@ -50,7 +73,7 @@ export const useWebSocket = (interviewId: string) => {
     return () => {
       clearTimeout(reconnectTimer);
       if (socketRef.current) {
-        socketRef.current.onclose = null; // Prevent reconnect on unmount
+        socketRef.current.onclose = null;
         socketRef.current.close();
       }
     };
@@ -70,5 +93,14 @@ export const useWebSocket = (interviewId: string) => {
     }
   }, []);
 
-  return { status, messages, sendAudio, sendText };
+  const playAudio = useCallback((blob: Blob) => {
+    const audioUrl = URL.createObjectURL(blob);
+    const audio = new Audio(audioUrl);
+    audio.play().catch(error => {
+      console.error('[TTS] Playback failed:', error);
+    });
+    audio.onended = () => URL.revokeObjectURL(audioUrl);
+  }, []);
+
+  return { status, messages, sendAudio, sendText, playAudio };
 };
