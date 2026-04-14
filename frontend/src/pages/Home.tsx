@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, BarChart3, Upload, Users, Shield, Cpu, ChevronLeft } from 'lucide-react';
+import { Mic, BarChart3, Upload, Users, Shield, Cpu, ChevronLeft, LayoutDashboard } from 'lucide-react';
 import SetupInterview from '../components/Setup/SetupInterview';
 import InterviewSession from '../components/Interview/InterviewSession';
+import InterviewDashboard from '../components/Dashboard/InterviewDashboard';
 
-type AppState = 'landing' | 'setup' | 'interview' | 'report';
+type AppState = 'landing' | 'setup' | 'interview' | 'dashboard';
 
 const Home: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('landing');
   const [interviewData, setInterviewData] = useState<any>(null);
 
   const startSetup = () => setAppState('setup');
+  const viewDashboard = () => setAppState('dashboard');
   
   const handleSetupSuccess = (data: any) => {
     setInterviewData(data);
@@ -106,13 +108,13 @@ const Home: React.FC = () => {
                 </p>
               </motion.div>
 
-              <motion.div variants={itemVariants} className="glass-card p-8 rounded-3xl hover-scale cursor-pointer group">
+              <motion.div variants={itemVariants} onClick={viewDashboard} className="glass-card p-8 rounded-3xl hover-scale cursor-pointer group">
                 <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 flex items-center justify-center mb-6 group-hover:bg-emerald-500/20 transition-colors">
                   <BarChart3 className="w-6 h-6 text-emerald-400" />
                 </div>
                 <h3 className="text-xl font-bold mb-3">View Analytics</h3>
                 <p className="text-white/50 leading-relaxed">
-                  Get detailed feedback scores on technical accuracy, communication, and relevance for every candidate.
+                  Track all candidate performances with detailed insights. View completion rates and download reports.
                 </p>
               </motion.div>
 
@@ -122,7 +124,17 @@ const Home: React.FC = () => {
                 </div>
                 <h3 className="text-xl font-bold mb-3">Multi-Agent System</h3>
                 <p className="text-white/50 leading-relaxed">
-                  Powered by CrewAI and Agno, orchestrating multiple specialized agents for a human-like experience.
+                  Powered by Llama 3, orchestrating specialized agents for natural voice-based interviews.
+                </p>
+              </motion.div>
+
+              <motion.div variants={itemVariants} onClick={viewDashboard} className="glass-card p-8 rounded-3xl hover-scale cursor-pointer group md:col-span-3 lg:col-span-1">
+                <div className="w-12 h-12 rounded-2xl bg-amber-500/10 flex items-center justify-center mb-6 group-hover:bg-amber-500/20 transition-colors">
+                  <LayoutDashboard className="w-6 h-6 text-amber-400" />
+                </div>
+                <h3 className="text-xl font-bold mb-3">Dashboard</h3>
+                <p className="text-white/50 leading-relaxed">
+                  Comprehensive dashboard to track all interviews, filter by status, and access candidate reports.
                 </p>
               </motion.div>
             </motion.section>
@@ -148,6 +160,17 @@ const Home: React.FC = () => {
             exit={{ opacity: 0, x: -20 }}
           >
             <InterviewSession interviewId={interviewData.interview_id.toString()} />
+          </motion.div>
+        )}
+
+        {appState === 'dashboard' && (
+          <motion.div 
+            key="dashboard"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 1.05 }}
+          >
+            <InterviewDashboard />
           </motion.div>
         )}
       </AnimatePresence>

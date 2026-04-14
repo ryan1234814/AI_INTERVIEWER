@@ -1,0 +1,93 @@
+graph TB
+    subgraph Frontend["Frontend (React + Vite + TypeScript)"]
+        UI["UI Components"]
+        Home["Home.tsx<br/>App State Management"]
+        Setup["SetupInterview.tsx<br/>Interview Creation Form"]
+        Session["InterviewSession.tsx<br/>Voice Interview UI"]
+        Dashboard["InterviewDashboard.tsx<br/>Analytics Dashboard"]
+        Hooks["Custom Hooks"]
+        WS_Hook["useWebSocket.ts<br/>Real-time Connection"]
+        TTS_Hook["useSpeechSynthesis.ts<br/>Browser TTS"]
+        API_Service["api.ts<br/>HTTP Client"]
+    end
+
+    subgraph Backend["Backend (FastAPI + Python)"]
+        API_Routes["API Routes"]
+        Interview_Routes["interviews.py<br/>CRUD + PDF Reports"]
+        WebSocket_Routes["websocket.py<br/>Real-time Interview"]
+        Agents["AI Agents"]
+        QG["QuestionGeneratorAgent<br/>Llama 3.3 70B"]
+        VI["VoiceInterviewerAgent<br/>Response Evaluation"]
+        RA["ResumeAnalyzerAgent<br/>PDF Parsing + Analysis"]
+        Voice["Voice System"]
+        VM["VoiceManager<br/>Orchestration"]
+        GTTS["gTTS Provider<br/>Free TTS"]
+        QWEN["Qwen TTS Provider<br/>(Optional)"]
+        Database[("Database<br/>SQLAlchemy + SQLite")]
+        PDF_Gen["PDF Generator<br/>ReportLab"]
+    end
+
+    subgraph External["External Services"]
+        GROQ["GROQ API<br/>Llama 3.3 70B"]
+        DashScope["DashScope API<br/>Qwen TTS (Optional)"]
+    end
+
+    %% Frontend Connections
+    Home --> Setup
+    Home --> Session
+    Home --> Dashboard
+    Setup --> API_Service
+    Session --> WS_Hook
+    Session --> TTS_Hook
+    Session --> API_Service
+    Dashboard --> API_Service
+    WS_Hook -.->|WebSocket| WebSocket_Routes
+    API_Service -.->|HTTP| API_Routes
+
+    %% Backend API Routes
+    API_Routes --> Interview_Routes
+    Interview_Routes --> Database
+    Interview_Routes --> PDF_Gen
+    Interview_Routes --> QG
+
+    %% WebSocket Flow
+    WebSocket_Routes --> VM
+    VM --> VI
+    VM --> QG
+    VM --> Database
+
+    %% Agent Connections
+    QG --> GROQ
+    VI --> GROQ
+    RA --> GROQ
+
+    %% Voice System
+    VM --> GTTS
+    VM --> QWEN
+    GTTS -->|Fallback| TTS_Hook
+    QWEN -.->|Optional| DashScope
+
+    %% Database Models
+    Database --> Job[(JobDescription)]
+    Database --> Candidate[(Candidate)]
+    Database --> Interview[(Interview)]
+    Database --> Response[(InterviewResponse)]
+    Database --> Evaluation[(Evaluation)]
+
+    %% User Flow
+    User([User]) -->|1. Setup| Setup
+    User -->|2. Voice Interview| Session
+    User -->|3. View Reports| Dashboard
+
+    %% Interview Flow
+    Setup -->|Generate Questions| QG
+    Session -->|Send Audio| VM
+    VM -->|Evaluate| VI
+    VM -->|Next Question| QG
+    Dashboard -->|Download| Interview_Routes
+
+    style Frontend fill:#1e3a5f,stroke:#4a90d9,color:#fff
+    style Backend fill:#2d4a3e,stroke:#5cb85c,color:#fff
+    style External fill:#5a3a3a,stroke:#d9534f,color:#fff
+    style Database fill:#4a4a4a,stroke:#f0ad4e,color:#fff
+    style User fill:#3a3a5a,stroke:#9b59b6,color:#fff
