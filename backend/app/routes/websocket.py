@@ -46,8 +46,20 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
         "candidate_skills": interview.candidate.extracted_skills,
         "question_index": interview.current_question_index,
         "total_questions": interview.total_questions,
-        "current_question": "Please introduce yourself." # Default first question
+        "current_question": "Please introduce yourself and tell me about your background."
     }
+
+    # Send first question immediately on connection
+    try:
+        first_question = context["current_question"]
+        await websocket.send_text(json.dumps({
+            "transcript": "",
+            "next_question": first_question,
+            "evaluation": None
+        }))
+        logger.info(f"[WS] Sent initial question: {first_question}")
+    except Exception as e:
+        logger.error(f"Failed to send initial question: {e}")
 
     try:
         while True:
@@ -81,22 +93,21 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
                         ai_response = await voice_manager.run_agent(transcript, context)
                         next_question = ai_response.get("next_question", "")
                         
-                        # 2. Generate FREE Voice for the next question
-                        audio_response = None
-                        if next_question:
-                            try:
-                                audio_response = await voice_manager.tts.get_audio_stream(next_question)
-                                logger.info(f"Generated {len(audio_response)} bytes of audio")
-                            except Exception as tts_err:
-                                logger.error(f"TTS generation failed: {tts_err}")
-                                audio_response = None
-                            
                         result = {
                             "transcript": transcript,
                             "next_question": next_question,
                             "evaluation": ai_response.get("evaluation"),
-                            "audio_response": audio_response
+                            "audio_response": None  # Will be sent separately
                         }
+                        
+                        # Send text response (TTS is done in browser)
+                        if next_question:
+                            await websocket.send_text(json.dumps({
+                                "transcript": transcript,
+                                "next_question": next_question,
+                                "evaluation": ai_response.get("evaluation")
+                            }))
+                            logger.info(f"[WS] Sent response with question: {next_question[:50]}...")
                     except Exception as e:
                         logger.error(f"Text mode Processing Failed: {e}")
                         result = {"error": f"Internal Error: {str(e)}"}
@@ -121,38 +132,30 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
                 await websocket.send_text(json.dumps({"error": result["error"]}))
                 continue
 
-            # Update context for next round
-            context["question_index"] += 1
-            context["current_question"] = result["next_question"]
-
-            # Save response to DB
+            # Save response to DB (use the question that was asked, before updating context)
+            current_q = context.get("current_question", "")
             try:
                 eval_data = result.get("evaluation", {})
                 db_response = models.InterviewResponse(
                     interview_id=interview_id,
-                    question_text=context.get("current_question", ""),
+                    question_text=current_q,
                     candidate_response=result.get("transcript", ""),
                     evaluation_score=eval_data.get("technical_accuracy", 0) if isinstance(eval_data, dict) else 0,
                     feedback=eval_data.get("feedback", "") if isinstance(eval_data, dict) else str(eval_data)
                 )
                 db.add(db_response)
                 db.commit()
+                logger.info(f"[DB] Saved response for question {context['question_index']}: {current_q[:40]}...")
             except Exception as db_err:
-                logger.error(f"DB save error: {db_err}")
+                logger.error(f"[DB] Save error: {db_err}")
                 db.rollback()
 
-            # Send response back to client
-            # 1. Send Audio first (so it arrives before or with the text)
-            if result.get("audio_response"):
-                logger.info(f"Sending {len(result['audio_response'])} bytes of audio to client")
-                await websocket.send_bytes(result["audio_response"])
+            # Update context for next round
+            context["question_index"] += 1
+            context["current_question"] = result["next_question"]
+            logger.info(f"[Context] Updated to question {context['question_index']}: {result['next_question'][:40]}...")
 
-            # 2. Send Transcript and text response
-            await websocket.send_text(json.dumps({
-                "transcript": result["transcript"],
-                "next_question": result["next_question"],
-                "evaluation": result["evaluation"]
-            }))
+            # Text already sent above in the text handler block
 
             # If interview completed, finalize in DB
             if context["question_index"] >= context["total_questions"]:

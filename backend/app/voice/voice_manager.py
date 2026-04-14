@@ -1,5 +1,6 @@
 import logging
-from app.voice.free_tts import EdgeTTS
+import os
+from app.voice.qwen_tts import QwenTTS
 from app.agents.voice_interviewer import VoiceInterviewerAgent
 
 logger = logging.getLogger(__name__)
@@ -9,8 +10,11 @@ class VoiceManager:
         self.mock_mode = False
         try:
             self.stt = None  # Browser handles STT via Web Speech API
-            self.tts = EdgeTTS()
+            dashscope_key = os.getenv("DASHSCOPE_API_KEY", "")
+            self.tts = QwenTTS(api_key=dashscope_key)  # Qwen3-TTS with gTTS fallback
             self.agent = VoiceInterviewerAgent(groq_api_key)
+            tts_type = "Qwen3-TTS" if self.tts.available else "gTTS (fallback)"
+            logger.info(f"[VoiceManager] Initialized with {tts_type}")
         except Exception as e:
             logger.error(f"VoiceManager init error: {e}. Falling back to mock mode.")
             self.mock_mode = True

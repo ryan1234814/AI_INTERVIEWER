@@ -81,17 +81,21 @@ class VoiceInterviewerAgent:
                 logger.info("[Agent] Generating NEW question (not follow-up)")
                 # Retrieve context for new topic
                 skills = interview_context.get("candidate_skills", ["General Programming"])
-                # Extract skill related to the job if possible, or pick one
-                target_skill = skills[0] if skills else "General Software Engineering" 
+                target_skill = skills[0] if skills else "General Software Engineering"
                 
-                # Use specialized QuestionGeneratorAgent for new topics
-                questions = self.question_generator.generate_questions(
-                    job_description=job_context,
-                    candidate_skills=[target_skill],
-                    count=1
-                )
-                next_raw_question = questions[0] if questions else "Can you tell me about your experience with " + target_skill + "?"
-                logger.info(f"[Agent] Generated new question: {next_raw_question[:60]}...")
+                try:
+                    # Use specialized QuestionGeneratorAgent for new topics
+                    questions = self.question_generator.generate_questions(
+                        job_description=job_context,
+                        candidate_skills=[target_skill],
+                        count=1
+                    )
+                    next_raw_question = questions[0] if questions else f"Can you tell me about your experience with {target_skill}?"
+                    logger.info(f"[Agent] Generated new question: {next_raw_question[:60]}...")
+                except Exception as qg_error:
+                    logger.error(f"[Agent] Question generation failed: {qg_error}")
+                    # Fallback question based on context
+                    next_raw_question = f"Let's discuss your experience with {target_skill}. What projects have you worked on?"
 
             # 6. Goal Alignment
             goal = interview_context.get("goal", "standard technical interview")

@@ -1,4 +1,5 @@
 import os
+from typing import Optional
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
@@ -8,10 +9,11 @@ class Settings(BaseSettings):
     PROJECT_NAME: str = "Agentic AI Voice Interview Platform"
     API_V1_STR: str = "/api/v1"
     
-    # API Keys
-    GROQ_API_KEY: str = os.getenv("GROQ_API_KEY")
-    DEEPGRAM_API_KEY: str = os.getenv("DEEPGRAM_API_KEY")
-    NVIDIA_API_KEY: str = os.getenv("NVIDIA_API_KEY")
+    # API Keys (all Optional to avoid validation errors when not set)
+    GROQ_API_KEY: Optional[str] = os.getenv("GROQ_API_KEY")
+    DEEPGRAM_API_KEY: Optional[str] = os.getenv("DEEPGRAM_API_KEY")
+    NVIDIA_API_KEY: Optional[str] = os.getenv("NVIDIA_API_KEY")
+    DASHSCOPE_API_KEY: Optional[str] = os.getenv("DASHSCOPE_API_KEY")
     
     # Database
     DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./interview_platform.db")

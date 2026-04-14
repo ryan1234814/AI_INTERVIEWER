@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, MicOff, Send, MessageSquare, Shield, AlertCircle, Loader2, Sparkles, Volume2 } from 'lucide-react';
 import { useWebSocket } from '../../hooks/useWebSocket';
+import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
 import { getInterview } from '../../services/api';
 
 interface Props {
@@ -9,12 +10,12 @@ interface Props {
 }
 
 const InterviewSession: React.FC<Props> = ({ interviewId }) => {
-  const { status, messages, sendAudio, sendText, playAudio } = useWebSocket(interviewId);
+  const { status, messages, sendText } = useWebSocket(interviewId);
+  const { speak, stop, isSpeaking, isSupported } = useSpeechSynthesis();
   const [isRecording, setIsRecording] = useState(false);
   const [interviewDetail, setInterviewDetail] = useState<any>(null);
   const [textMode, setTextMode] = useState(false);
   const [textInput, setTextInput] = useState('');
-  const [isSpeaking, setIsSpeaking] = useState(false);
 
   // Load interview details on mount
   useEffect(() => {
@@ -30,6 +31,12 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
   }, [interviewId]);
 
   const recognitionRef = useRef<any>(null);
+  const isRecordingRef = useRef(false);
+
+  // Keep ref in sync with state
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
 
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
@@ -43,10 +50,11 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
 
       recognition.onresult = (event: any) => {
         clearTimeout(silenceTimer);
+        // Shorter silence timeout - 5 seconds instead of 15
         silenceTimer = setTimeout(() => {
-          console.log("[STT] 15s Silence detected. Finalizing...");
+          console.log("[STT] 5s Silence detected. Finalizing...");
           recognition.stop();
-        }, 15000);
+        }, 5000);
 
         let finalTranscript = '';
         for (let i = event.resultIndex; i < event.results.length; ++i) {
@@ -62,7 +70,8 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
 
            if (transcript.toLowerCase().includes("thank you") || transcript.toLowerCase().includes("thanks")) {
               recognition.stop();
-              setTimeout(() => setIsRecording(false), 500);
+              setIsRecording(false);
+              isRecordingRef.current = false;
            }
         }
       };
@@ -72,6 +81,40 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
         if (event.error === 'not-allowed') {
           alert('Microphone access denied.');
           setTextMode(true);
+          setIsRecording(false);
+          isRecordingRef.current = false;
+        } else if (event.error === 'no-speech' || event.error === 'aborted' || event.error === 'network') {
+          // Auto-restart on recoverable errors
+          console.log('[STT] Recoverable error, restarting...');
+          setTimeout(() => {
+            if (isRecordingRef.current) {
+              try {
+                recognition.start();
+                console.log('[STT] Restarted after error');
+              } catch (e) {
+                console.log('[STT] Restart failed after error');
+                setIsRecording(false);
+                isRecordingRef.current = false;
+              }
+            }
+          }, 300);
+        }
+      };
+
+      recognition.onend = () => {
+        console.log('[STT] Recognition ended, isRecording=', isRecordingRef.current);
+        // Auto-restart if still recording (use ref to avoid stale closure)
+        if (isRecordingRef.current) {
+          setTimeout(() => {
+            try {
+              recognition.start();
+              console.log('[STT] Auto-restarted');
+            } catch (e) {
+              console.log('[STT] Could not auto-restart');
+              setIsRecording(false);
+              isRecordingRef.current = false;
+            }
+          }, 200);
         }
       };
 
@@ -79,6 +122,11 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
     }
     return () => {
       if (silenceTimer) clearTimeout(silenceTimer);
+      if (recognitionRef.current) {
+        try {
+          recognitionRef.current.stop();
+        } catch (e) {}
+      }
     };
   }, [sendText]);
 
@@ -87,6 +135,7 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
       try {
         recognitionRef.current.start();
         setIsRecording(true);
+        isRecordingRef.current = true;
       } catch (e) {
         console.error("Recognition start error:", e);
       }
@@ -100,6 +149,7 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
     if (recognitionRef.current) {
       recognitionRef.current.stop();
       setIsRecording(false);
+      isRecordingRef.current = false;
     }
   };
 
@@ -110,32 +160,16 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
     sendText(input);
   };
 
-  // Handle playing back AI voice responses
+  // Speak questions using browser's built-in TTS when new question arrives
   useEffect(() => {
     const latestMessage = messages[messages.length - 1];
-    if (latestMessage?.audioBlob && latestMessage?.next_question) {
-      console.log(`[TTS] Playing audio for question: ${latestMessage.next_question.substring(0, 50)}...`);
-      setIsSpeaking(true);
-
-      const audioUrl = URL.createObjectURL(latestMessage.audioBlob);
-      const audio = new Audio(audioUrl);
-
-      audio.onended = () => {
-        setIsSpeaking(false);
-        URL.revokeObjectURL(audioUrl);
-      };
-
-      audio.onerror = () => {
-        setIsSpeaking(false);
-        URL.revokeObjectURL(audioUrl);
-      };
-
-      audio.play().catch(error => {
-        console.error('[TTS] Playback failed:', error);
-        setIsSpeaking(false);
+    if (latestMessage?.next_question && isSupported) {
+      console.log(`[TTS] Speaking question: ${latestMessage.next_question.substring(0, 50)}...`);
+      speak(latestMessage.next_question).catch((err) => {
+        console.error('[TTS] Speech synthesis error:', err);
       });
     }
-  }, [messages, playAudio]);
+  }, [messages, speak, isSupported]);
 
   const latestMsg = messages[messages.length - 1];
   const currentQuestion = latestMsg?.next_question || interviewDetail?.responses?.[0]?.question_text || "Please introduce yourself and tell me about your background.";
@@ -281,12 +315,10 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
             <h4 className="text-sm font-bold text-white/40 uppercase tracking-widest mb-4">Live Transcript</h4>
             <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
               {status === 'connected' && messages.length === 0 && (
-                <button
-                  onClick={() => sendText("Hello, I am ready to start")}
-                  className="w-full py-4 rounded-xl bg-blue-600/20 border border-blue-500/30 text-blue-400 font-bold hover:bg-blue-600/30 transition-all"
-                >
-                  Start Interview
-                </button>
+                <div className="flex items-center justify-center gap-2 text-blue-400/60 py-8">
+                  <div className="w-5 h-5 border-2 border-blue-400/30 border-t-blue-400 rounded-full animate-spin" />
+                  <span className="text-sm">Waiting for AI interviewer...</span>
+                </div>
               )}
               {messages.map((msg, i) => {
                 if (msg.error) return (
