@@ -97,4 +97,25 @@ export const completeInterview = async (interviewId: number) => {
   return response.data;
 };
 
+export const downloadReport = async (interviewId: number, candidateName: string): Promise<void> => {
+  try {
+    const response = await api.get(`/interviews/${interviewId}/report`, {
+      responseType: 'blob',
+    });
+
+    const blob = new Blob([response.data], { type: 'application/pdf' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `Interview_Report_${candidateName.replace(/\s+/g, '_')}.pdf`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+  } catch (error) {
+    console.error('Failed to download report:', error);
+    throw error;
+  }
+};
+
 export default api;

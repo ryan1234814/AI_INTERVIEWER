@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Mic, MicOff, Send, MessageSquare, Shield, AlertCircle, Loader2, Sparkles, Volume2 } from 'lucide-react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
-import { getInterview } from '../../services/api';
+import { getInterview, downloadReport } from '../../services/api';
 
 interface Props {
   interviewId: string;
@@ -16,6 +16,7 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
   const [interviewDetail, setInterviewDetail] = useState<any>(null);
   const [textMode, setTextMode] = useState(false);
   const [textInput, setTextInput] = useState('');
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Load interview details on mount
   useEffect(() => {
@@ -173,6 +174,19 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
 
   const latestMsg = messages[messages.length - 1];
   const currentQuestion = latestMsg?.next_question || interviewDetail?.responses?.[0]?.question_text || "Please introduce yourself and tell me about your background.";
+
+  const handleDownloadReport = async () => {
+    setIsDownloading(true);
+    try {
+      const candidateName = interviewDetail?.candidate?.name || 'Candidate';
+      await downloadReport(parseInt(interviewId), candidateName);
+    } catch (err) {
+      console.error('Failed to download report:', err);
+      alert('Failed to download report. Please try again.');
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -354,10 +368,21 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
                 <div className="mt-4 p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 text-center space-y-4">
                   <h5 className="font-bold text-emerald-400">Interview Complete!</h5>
                   <button
-                    onClick={() => window.open(`/api/v1/interviews/${interviewId}/report`, '_blank')}
-                    className="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-500 transition-all flex items-center justify-center gap-2"
+                    onClick={handleDownloadReport}
+                    disabled={isDownloading}
+                    className="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-500 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Download PDF Report
+                    {isDownloading ? (
+                      <>
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Downloading...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-5 h-5" />
+                        Download PDF Report
+                      </>
+                    )}
                   </button>
                 </div>
               )}
