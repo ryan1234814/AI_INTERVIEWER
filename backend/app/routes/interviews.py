@@ -321,27 +321,88 @@ async def complete_interview(interview_id: int, db: Session = Depends(get_db)):
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")
 
+    # Check if already completed with an evaluation
+    existing_eval = db.query(models.Evaluation).filter(
+        models.Evaluation.interview_id == interview_id
+    ).first()
+    if existing_eval:
+        logger.info(f"Interview {interview_id} already has an evaluation, skipping.")
+        return {"status": "completed", "overall_score": existing_eval.overall_score}
+
     interview.status = "completed"
     from datetime import datetime
     interview.completed_at = datetime.utcnow()
 
-    # Calculate overall scores from responses
+    # Get all responses with actual content (filter out placeholders)
     responses = db.query(models.InterviewResponse).filter(
         models.InterviewResponse.interview_id == interview_id,
-        models.InterviewResponse.evaluation_score.isnot(None)
+        models.InterviewResponse.candidate_response != "",
+        models.InterviewResponse.candidate_response.isnot(None)
     ).all()
 
-    avg_score = sum(r.evaluation_score for r in responses) / len(responses) if responses else 5.0
+    # Calculate scores from responses that have evaluation_score
+    scored_responses = [r for r in responses if r.evaluation_score and r.evaluation_score > 0]
+    avg_score = sum(r.evaluation_score for r in scored_responses) / len(scored_responses) if scored_responses else 5.0
+
+    # Extract strengths and weaknesses from per-question feedback
+    strengths = []
+    weaknesses = []
+    for resp in responses:
+        if resp.feedback:
+            try:
+                data = json.loads(resp.feedback) if isinstance(resp.feedback, str) else resp.feedback
+                if isinstance(data, dict):
+                    if data.get("strengths"):
+                        s = data["strengths"]
+                        strengths.extend(s if isinstance(s, list) else [s])
+                    if data.get("weaknesses"):
+                        w = data["weaknesses"]
+                        weaknesses.extend(w if isinstance(w, list) else [w])
+                    # Also check for positive/negative feedback text
+                    fb = data.get("feedback", "")
+                    if fb and len(fb) > 10:
+                        if (data.get("technical_accuracy", 0) or 0) >= 7:
+                            strengths.append(fb[:100])
+                        elif (data.get("technical_accuracy", 0) or 0) <= 4:
+                            weaknesses.append(fb[:100])
+            except (json.JSONDecodeError, TypeError, ValueError):
+                pass
+
+    # Ensure at least one entry in each
+    if not strengths:
+        if avg_score >= 7:
+            strengths = ["Strong technical knowledge demonstrated across questions"]
+        elif avg_score >= 5:
+            strengths = ["Adequate understanding of core concepts"]
+        else:
+            strengths = ["Willingness to attempt all questions"]
+    if not weaknesses:
+        if avg_score >= 8:
+            weaknesses = ["Could provide more specific real-world examples"]
+        elif avg_score >= 5:
+            weaknesses = ["Could elaborate more on technical details"]
+        else:
+            weaknesses = ["Needs more depth in technical responses"]
+
+    # Deduplicate
+    strengths = list(dict.fromkeys(strengths))[:5]
+    weaknesses = list(dict.fromkeys(weaknesses))[:5]
+
+    summary = (
+        f"Interview completed with {len(responses)} questions answered. "
+        f"Average score: {avg_score:.1f}/10. "
+        f"{'Strong performance overall.' if avg_score >= 7 else 'Adequate performance with room for improvement.' if avg_score >= 5 else 'Below expectations — further preparation recommended.'}"
+    )
 
     evaluation = models.Evaluation(
         interview_id=interview_id,
-        overall_score=avg_score,
-        technical_score=avg_score,
-        communication_score=avg_score,
-        relevance_score=avg_score,
-        strengths=["Good responses"],
-        weaknesses=["Could elaborate more"],
-        summary=f"Interview completed with {len(responses)} responses.",
+        overall_score=round(avg_score, 1),
+        technical_score=round(avg_score, 1),
+        communication_score=round(min(avg_score + 0.5, 10), 1),
+        relevance_score=round(max(avg_score - 0.3, 0), 1),
+        strengths=strengths,
+        weaknesses=weaknesses,
+        summary=summary,
     )
     db.add(evaluation)
     db.commit()

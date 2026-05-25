@@ -20,6 +20,9 @@ alembic
 # Voice & Utils
 deepgram-sdk
 edge-tts
+gTTS
+openai
+aiohttp
 aiofiles
 websockets
 httpx

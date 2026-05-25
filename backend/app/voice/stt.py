@@ -1,12 +1,15 @@
 import logging
-from deepgram import DeepgramClient, PrerecordedOptions, FileSource
 from app.config import settings
 import aiofiles
 
 logger = logging.getLogger(__name__)
 
+# Deepgram imports are lazy-loaded in DeepgramSTT to avoid breaking GroqSTT
+# when the installed deepgram SDK version is incompatible.
+
 class DeepgramSTT:
     def __init__(self, api_key: str = settings.DEEPGRAM_API_KEY):
+        from deepgram import DeepgramClient
         self.client = DeepgramClient(api_key)
 
     async def transcribe_audio(self, audio_path: str) -> str:
