@@ -164,7 +164,7 @@ def generate_interview_pdf(candidate_name, job_title, evaluation_data, responses
             elements.append(Paragraph(f"<b>Answer:</b> {r_text}", response_style))
             
             # Parse evaluation data from feedback field
-            score, feedback_text = _parse_feedback(resp.feedback, resp.evaluation_score)
+            score, feedback_text = _parse_feedback(resp.feedback, getattr(resp, 'evaluation_score', None))
             
             # Score badge
             if score is not None and score > 0:

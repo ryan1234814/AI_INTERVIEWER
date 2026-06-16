@@ -5,6 +5,8 @@ import sys
 import os
 import time
 sys.path.insert(0, '/Users/ryangeorge/ai_interviewer/backend')
+from dotenv import load_dotenv
+load_dotenv()
 
 async def test_qwen_tts():
     """Test Qwen3-TTS via DashScope API"""
@@ -115,12 +117,14 @@ def test_pdf_generation():
         SimpleNamespace(
             question_text="Tell me about yourself",
             candidate_response="I am a software engineer with 5 years experience.",
-            feedback="Good introduction"
+            feedback="Good introduction",
+            evaluation_score=8.0
         ),
         SimpleNamespace(
             question_text="What is your biggest strength?",
             candidate_response="Problem-solving and attention to detail.",
-            feedback="Clear answer"
+            feedback="Clear answer",
+            evaluation_score=9.0
         )
     ]
     
