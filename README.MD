@@ -16,35 +16,35 @@ The Agentic AI Voice Interview Platform is a production-ready system that conduc
 
 ## Setup and Execution
 
-### 1. Backend Setup
-Navigate to the backend directory and set up your environment:
-```bash
-cd backend
-# Recommended: Create and activate a virtual environment with Python 3.11
-# python3.11 -m venv venv
-# source venv/bin/activate
+Please see [setup.md](file:///Users/ryangeorge/ai_interviewer/setup.md) for the detailed step-by-step setup guide.
 
-# Install dependencies
-python3.11 -m pip install -r ../requirements.txt
-```
+### Quick Start:
 
-#### Run the Backend
-```bash
-python3.11 -m uvicorn app.main:app --reload --port 8000
-```
+1. **Environment Setup**:
+   Copy your API keys into a `.env` file at the root and under `backend/`.
 
-### 2. Frontend Setup
-Navigate to the frontend directory:
-```bash
-cd frontend
-npm install
-```
+2. **Backend**:
+   ```bash
+   python3.11 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   pip install reportlab
+   
+   # Run tests
+   python test_all_features.py
+   
+   # Run server
+   cd backend
+   ../venv/bin/uvicorn app.main:app --reload --port 8000
+   ```
 
-#### Run the Frontend
-```bash
-npm run dev
-```
-The frontend will be available at `http://localhost:5173`.
+3. **Frontend**:
+   ```bash
+   cd frontend
+   npm install
+   npm run dev
+   ```
+   The frontend will be available at `http://localhost:5173`.
 
 ## Environment Configuration
 Ensure your `backend/.env` file contains the following:

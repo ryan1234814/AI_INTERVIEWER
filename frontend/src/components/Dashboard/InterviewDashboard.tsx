@@ -5,7 +5,6 @@ import {
   Users, 
   TrendingUp, 
   Award, 
-  Clock, 
   FileText, 
   Download,
   Loader2,
@@ -17,7 +16,8 @@ import {
   MessageSquare,
   CheckCircle,
   XCircle,
-  Clock3
+  Clock3,
+  ArrowUpRight
 } from 'lucide-react';
 import { listInterviews, downloadReport } from '../../services/api';
 
@@ -112,10 +112,56 @@ const InterviewDashboard: React.FC = () => {
     return Math.round((interview.current_question_index / interview.total_questions) * 100);
   };
 
+  const stats = [
+    {
+      label: 'Total Interviews',
+      value: totalInterviews,
+      icon: Users,
+      color: 'from-blue-500/20 to-blue-600/10',
+      iconColor: 'text-blue-400',
+      glow: 'stat-glow-blue',
+      change: '+12%',
+      changeUp: true,
+    },
+    {
+      label: 'Completed',
+      value: completedInterviews,
+      icon: CheckCircle,
+      color: 'from-emerald-500/20 to-emerald-600/10',
+      iconColor: 'text-emerald-400',
+      glow: 'stat-glow-emerald',
+      change: '+8%',
+      changeUp: true,
+    },
+    {
+      label: 'In Progress',
+      value: ongoingInterviews,
+      icon: Clock3,
+      color: 'from-blue-500/20 to-blue-600/10',
+      iconColor: 'text-blue-400',
+      glow: 'stat-glow-blue',
+      change: '',
+      changeUp: true,
+    },
+    {
+      label: 'Completion Rate',
+      value: `${completionRate}%`,
+      icon: TrendingUp,
+      color: 'from-purple-500/20 to-purple-600/10',
+      iconColor: 'text-purple-400',
+      glow: 'stat-glow-purple',
+      change: completionRate >= 70 ? 'Excellent' : completionRate >= 40 ? 'Good' : 'Needs Work',
+      changeUp: completionRate >= 40,
+    },
+  ];
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 text-blue-400 animate-spin" />
+        <div className="flex items-center gap-3 text-blue-400/60">
+          <Loader2 className="w-6 h-6 animate-spin" />
+          <span className="text-sm font-medium">Loading dashboard...</span>
+        </div>
       </div>
     );
   }
@@ -127,76 +173,58 @@ const InterviewDashboard: React.FC = () => {
       className="space-y-8"
     >
       {/* Header */}
-      <div className="text-center space-y-2">
-        <h2 className="text-3xl font-bold">Interview Dashboard</h2>
-        <p className="text-white/50">Track all candidate performances and overall stats</p>
+      <div className="text-center space-y-3">
+        <motion.h2 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-3xl md:text-4xl font-bold"
+        >
+          Interview <span className="gradient-text">Dashboard</span>
+        </motion.h2>
+        <motion.p 
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.1 }}
+          className="text-white/40"
+        >
+          Track all candidate performances and overall stats
+        </motion.p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="glass-card p-6 rounded-2xl"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
-              <Users className="w-5 h-5 text-blue-400" />
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.map((stat, i) => (
+          <motion.div 
+            key={i}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 + i * 0.05 }}
+            className={`glass-card p-5 rounded-2xl hover-scale group ${stat.glow}`}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className={`w-11 h-11 rounded-2xl bg-gradient-to-br ${stat.color} flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
+                <stat.icon className={`w-5 h-5 ${stat.iconColor}`} />
+              </div>
+              {stat.change && (
+                <div className={`flex items-center gap-1 text-xs font-bold ${stat.changeUp ? 'text-emerald-400' : 'text-amber-400'}`}>
+                  {stat.changeUp && <ArrowUpRight className="w-3 h-3" />}
+                  {stat.change}
+                </div>
+              )}
             </div>
-            <span className="text-2xl font-bold">{totalInterviews}</span>
-          </div>
-          <p className="text-sm text-white/50">Total Interviews</p>
-        </motion.div>
-
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="glass-card p-6 rounded-2xl"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-              <CheckCircle className="w-5 h-5 text-emerald-400" />
-            </div>
-            <span className="text-2xl font-bold">{completedInterviews}</span>
-          </div>
-          <p className="text-sm text-white/50">Completed</p>
-        </motion.div>
-
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="glass-card p-6 rounded-2xl"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
-              <Clock3 className="w-5 h-5 text-blue-400" />
-            </div>
-            <span className="text-2xl font-bold">{ongoingInterviews}</span>
-          </div>
-          <p className="text-sm text-white/50">In Progress</p>
-        </motion.div>
-
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.4 }}
-          className="glass-card p-6 rounded-2xl"
-        >
-          <div className="flex items-center justify-between mb-4">
-            <div className="w-10 h-10 rounded-xl bg-purple-500/10 flex items-center justify-center">
-              <TrendingUp className="w-5 h-5 text-purple-400" />
-            </div>
-            <span className="text-2xl font-bold">{completionRate}%</span>
-          </div>
-          <p className="text-sm text-white/50">Completion Rate</p>
-        </motion.div>
+            <p className="text-2xl md:text-3xl font-extrabold">{stat.value}</p>
+            <p className="text-xs text-white/40 mt-1 font-medium">{stat.label}</p>
+          </motion.div>
+        ))}
       </div>
 
       {/* Search and Filter */}
-      <div className="flex flex-col md:flex-row gap-4">
+      <motion.div 
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="flex flex-col md:flex-row gap-4"
+      >
         <div className="relative flex-1">
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
           <input
@@ -204,7 +232,7 @@ const InterviewDashboard: React.FC = () => {
             placeholder="Search candidates or jobs..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full bg-white/5 border border-white/10 rounded-2xl pl-11 pr-4 py-3 focus:outline-none focus:border-blue-500/50 transition-all"
+            className="w-full bg-white/[0.03] border border-white/10 rounded-2xl pl-11 pr-4 py-3.5 focus:outline-none focus:border-blue-500/50 focus:bg-white/[0.05] transition-all text-white placeholder:text-white/20"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -212,34 +240,40 @@ const InterviewDashboard: React.FC = () => {
           <select
             value={filterStatus}
             onChange={(e) => setFilterStatus(e.target.value)}
-            className="bg-white/5 border border-white/10 rounded-2xl px-4 py-3 focus:outline-none focus:border-blue-500/50 transition-all"
+            className="bg-white/[0.03] border border-white/10 rounded-2xl px-4 py-3.5 focus:outline-none focus:border-blue-500/50 transition-all text-white appearance-none"
           >
-            <option value="all">All Status</option>
-            <option value="completed">Completed</option>
-            <option value="ongoing">In Progress</option>
-            <option value="pending">Pending</option>
+            <option value="all" className="bg-[#101016]">All Status</option>
+            <option value="completed" className="bg-[#101016]">Completed</option>
+            <option value="ongoing" className="bg-[#101016]">In Progress</option>
+            <option value="pending" className="bg-[#101016]">Pending</option>
           </select>
         </div>
-      </div>
+      </motion.div>
 
       {/* Interview List */}
-      <div className="glass-card rounded-2xl overflow-hidden">
-        <div className="p-6 border-b border-white/10">
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35 }}
+        className="glass-card rounded-3xl overflow-hidden"
+      >
+        <div className="p-6 border-b border-white/5">
           <h3 className="text-lg font-semibold flex items-center gap-2">
             <BarChart3 className="w-5 h-5 text-blue-400" />
             Recent Interviews
+            <span className="text-xs text-white/30 font-normal ml-auto">{filteredInterviews.length} total</span>
           </h3>
         </div>
         
         {filteredInterviews.length === 0 ? (
-          <div className="p-12 text-center">
+          <div className="p-16 text-center">
             <div className="w-16 h-16 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-4">
-              <FileText className="w-8 h-8 text-white/30" />
+              <FileText className="w-8 h-8 text-white/20" />
             </div>
-            <p className="text-white/50">No interviews found</p>
-            <p className="text-sm text-white/30 mt-1">
+            <p className="text-white/50 font-medium">No interviews found</p>
+            <p className="text-sm text-white/30 mt-1.5">
               {searchTerm || filterStatus !== 'all' 
-                ? 'Try adjusting your search or filter' 
+                ? 'Try adjusting your search or filter criteria' 
                 : 'Start by creating your first interview'}
             </p>
           </div>
@@ -248,45 +282,47 @@ const InterviewDashboard: React.FC = () => {
             {filteredInterviews.map((interview, index) => (
               <motion.div
                 key={interview.id}
-                initial={{ opacity: 0, x: -20 }}
+                initial={{ opacity: 0, x: -10 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: index * 0.05 }}
-                className="p-6 hover:bg-white/[0.02] transition-colors group"
+                transition={{ delay: index * 0.03 }}
+                className="p-5 hover:bg-white/[0.02] transition-all duration-300 group"
               >
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                   {/* Candidate Info */}
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-500/20 to-emerald-500/20 flex items-center justify-center">
-                      <span className="text-lg font-bold">
+                    <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-500/20 to-emerald-500/20 flex items-center justify-center group-hover:scale-105 transition-transform">
+                      <span className="text-sm font-bold">
                         {interview.candidate_name.charAt(0).toUpperCase()}
                       </span>
                     </div>
                     <div>
-                      <h4 className="font-semibold">{interview.candidate_name}</h4>
+                      <h4 className="font-semibold text-[15px]">{interview.candidate_name}</h4>
                       <p className="text-sm text-white/50">{interview.job_title}</p>
-                      <p className="text-xs text-white/30 mt-1">
-                        ID: #{interview.id} • {interview.started_at 
-                          ? new Date(interview.started_at).toLocaleDateString() 
+                      <p className="text-xs text-white/30 mt-0.5">
+                        #{interview.id} • {interview.started_at 
+                          ? new Date(interview.started_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
                           : 'Not started'}
                       </p>
                     </div>
                   </div>
 
                   {/* Progress & Status */}
-                  <div className="flex items-center gap-6">
+                  <div className="flex items-center gap-5">
                     {/* Progress Bar */}
-                    <div className="w-32 space-y-1">
-                      <div className="flex justify-between text-xs text-white/50">
+                    <div className="w-36 space-y-1.5">
+                      <div className="flex justify-between text-[11px] text-white/50">
                         <span>Progress</span>
-                        <span>{getProgressPercentage(interview)}%</span>
+                        <span className="font-medium">{getProgressPercentage(interview)}%</span>
                       </div>
-                      <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-                        <div 
-                          className="h-full bg-gradient-to-r from-blue-500 to-emerald-500 rounded-full transition-all duration-500"
-                          style={{ width: `${getProgressPercentage(interview)}%` }}
+                      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                        <motion.div 
+                          className="h-full bg-gradient-to-r from-blue-500 to-emerald-500 rounded-full"
+                          initial={{ width: 0 }}
+                          animate={{ width: `${getProgressPercentage(interview)}%` }}
+                          transition={{ duration: 0.5, delay: index * 0.03 }}
                         />
                       </div>
-                      <p className="text-xs text-white/30">
+                      <p className="text-[10px] text-white/25">
                         {interview.current_question_index} / {interview.total_questions} questions
                       </p>
                     </div>
@@ -301,10 +337,10 @@ const InterviewDashboard: React.FC = () => {
                     <button
                       onClick={() => handleDownload(interview)}
                       disabled={interview.status !== 'completed' || downloadingId === interview.id}
-                      className={`p-2 rounded-xl transition-all ${
+                      className={`p-2.5 rounded-xl transition-all duration-300 ${
                         interview.status === 'completed'
-                          ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20'
-                          : 'bg-white/5 text-white/30 cursor-not-allowed'
+                          ? 'bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 hover:scale-105'
+                          : 'bg-white/5 text-white/20 cursor-not-allowed'
                       }`}
                       title={interview.status === 'completed' ? 'Download Report' : 'Complete interview to download'}
                     >
@@ -320,49 +356,49 @@ const InterviewDashboard: React.FC = () => {
             ))}
           </div>
         )}
-      </div>
+      </motion.div>
 
       {/* Performance Insights */}
       {completedInterviews > 0 && (
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 }}
-          className="glass-card p-6 rounded-2xl"
+          transition={{ delay: 0.4 }}
+          className="glass-card p-8 rounded-3xl"
         >
           <h3 className="text-lg font-semibold flex items-center gap-2 mb-6">
             <Target className="w-5 h-5 text-purple-400" />
             Performance Insights
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="space-y-2">
+            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2">
               <div className="flex items-center gap-2 text-sm text-white/50">
-                <Star className="w-4 h-4 text-yellow-400" />
+                <Star className="w-4 h-4 text-amber-400" />
                 <span>Average Completion</span>
               </div>
-              <p className="text-2xl font-bold">{completionRate}%</p>
+              <p className="text-3xl font-extrabold gradient-text">{completionRate}%</p>
               <p className="text-xs text-white/30">
                 {completedInterviews} of {totalInterviews} interviews finished
               </p>
             </div>
-            <div className="space-y-2">
+            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2">
               <div className="flex items-center gap-2 text-sm text-white/50">
                 <MessageSquare className="w-4 h-4 text-blue-400" />
                 <span>Total Questions Asked</span>
               </div>
-              <p className="text-2xl font-bold">
+              <p className="text-3xl font-extrabold">
                 {interviews.reduce((acc, i) => acc + i.current_question_index, 0)}
               </p>
               <p className="text-xs text-white/30">
                 Across all interviews
               </p>
             </div>
-            <div className="space-y-2">
+            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2">
               <div className="flex items-center gap-2 text-sm text-white/50">
                 <Award className="w-4 h-4 text-emerald-400" />
                 <span>Success Rate</span>
               </div>
-              <p className="text-2xl font-bold text-emerald-400">
+              <p className={`text-3xl font-extrabold ${completionRate >= 80 ? 'text-emerald-400' : completionRate >= 50 ? 'text-blue-400' : 'text-amber-400'}`}>
                 {completionRate >= 80 ? 'Excellent' : completionRate >= 50 ? 'Good' : 'Needs Work'}
               </p>
               <p className="text-xs text-white/30">
