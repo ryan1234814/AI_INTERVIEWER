@@ -11,8 +11,8 @@ The Agentic AI Voice Interview Platform is a production-ready system that conduc
 ## Prerequisites
 - **Python 3.11** (Required for compatibility with all AI and voice libraries)
 - **Node.js & npm** (For the React frontend)
-- **Groq API Key** (Set in `.env`)
-- **NVIDIA API Key** (For STT processing)
+- **Groq API Key** — see `.env.example` for setup
+- **NVIDIA API Key** — see `.env.example` for setup
 
 ## Setup and Execution
 
@@ -21,7 +21,11 @@ Please see [setup.md](file:///Users/ryangeorge/ai_interviewer/setup.md) for the 
 ### Quick Start:
 
 1. **Environment Setup**:
-   Copy your API keys into a `.env` file at the root and under `backend/`.
+   ```bash
+   cp .env.example .env
+   cp .env.example backend/.env
+   # Then edit both .env files with your actual API keys
+   ```
 
 2. **Backend**:
    ```bash
@@ -47,11 +51,21 @@ Please see [setup.md](file:///Users/ryangeorge/ai_interviewer/setup.md) for the 
    The frontend will be available at `http://localhost:5173`.
 
 ## Environment Configuration
-Ensure your `backend/.env` file contains the following:
-- `GROQ_API_KEY`
-- `DEEPGRAM_API_KEY`
-- `NVIDIA_API_KEY`
-- `DATABASE_URL=sqlite:///./interview_platform.db`
+
+Copy `.env.example` (at the project root) to `.env` in both the root and `backend/` directories, then fill in your actual values:
+
+```bash
+cp .env.example .env
+cp .env.example backend/.env
+```
+
+The `.env.example` file documents every variable, its purpose, and where to obtain API keys. A valid `SECRET_KEY` is **required** — generate one with:
+
+```bash
+python -c 'import secrets; print(secrets.token_hex(32))'
+```
+
+> **Note**: `SECRET_KEY` must be a high-entropy key. The application will refuse to start if it is missing or still set to a placeholder.
 
 ## Tech Stack
 - **Backend**: FastAPI, LangChain, LangGraph, SQL Alchemy, ChromaDB.

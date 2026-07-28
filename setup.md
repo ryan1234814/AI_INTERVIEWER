@@ -13,19 +13,20 @@ This document describes the verified setup and execution steps to run the Agenti
 
 The application requires API keys for speech-to-text, text-to-speech, and language modeling agents.
 
-Create a `.env` file in the root directory (and copy it into the `backend/` directory for backend access) containing:
+Copy the `.env.example` file from the project root to both the root and `backend/` directories, then fill in your actual values:
 
-```env
-GROQ_API_KEY="your_groq_api_key"
-DEEPGRAM_API_KEY="your_deepgram_api_key"
-NVIDIA_API_KEY="your_nvidia_api_key"
-DATABASE_URL=sqlite:///./interview_platform.db
-CHROMA_PATH=./chroma_db
-# Generate a secure SECRET_KEY:  python -c 'import secrets; print(secrets.token_hex(32))'
-SECRET_KEY="replace-with-a-generated-secret-key"
-ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+```bash
+cp .env.example .env
+cp .env.example backend/.env
 ```
+
+The `.env.example` file documents every variable, its purpose, and where to obtain API keys. A valid `SECRET_KEY` is **required** — generate one with:
+
+```bash
+python -c 'import secrets; print(secrets.token_hex(32))'
+```
+
+> **Note**: `SECRET_KEY` must be a high-entropy key. The application will refuse to start if it is missing or still set to a placeholder.
 
 ---
 
