@@ -16,15 +16,15 @@ sessions: Dict[str, Dict[str, Any]] = {}
 
 @router.websocket("/ws/interview/{interview_id}")
 async def interview_websocket(websocket: WebSocket, interview_id: int, db: Session = Depends(get_db)):
-    logger.info(f"WebSocket connection attempt for interview {interview_id}")
+    logger.info("WebSocket connection attempt for interview %d", interview_id)
     await websocket.accept()
-    logger.info(f"WebSocket accepted for interview {interview_id}")
+    logger.info("WebSocket accepted for interview %d", interview_id)
     
     # Initialize Voice Manager (free EdgeTTS, no Deepgram needed)
     try:
         voice_manager = VoiceManager(settings.GROQ_API_KEY)
     except Exception as e:
-        logger.error(f"Failed to initialize VoiceManager: {e}")
+        logger.error("Failed to initialize VoiceManager: %s", e)
         await websocket.send_text(json.dumps({"error": f"Internal Error: {str(e)}"}))
         await websocket.close()
         return
@@ -32,16 +32,16 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
     # Fetch interview details from DB
     interview = crud.get_interview(db, interview_id=interview_id)
     if not interview:
-        logger.error(f"Interview {interview_id} not found in database")
+        logger.error("Interview %d not found in database", interview_id)
         await websocket.send_text(json.dumps({"error": "Interview not found"}))
         await websocket.close()
         return
 
-    logger.info(f"Starting interview session for {interview.candidate.name}")
+    logger.info("Starting interview session for candidate_id=%d", interview.candidate_id)
 
     # If interview is already completed, inform client and close
     if interview.status == 'completed':
-        logger.info(f"Interview {interview_id} already completed")
+        logger.info("Interview %d already completed", interview_id)
         await websocket.send_text(json.dumps({
             "status": "completed",
             "next_question": "This interview has already been completed. You can download your report."
@@ -71,9 +71,9 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
             "next_question": first_question,
             "evaluation": None
         }))
-        logger.info(f"[WS] Sent initial question: {first_question}")
+        logger.info("[WS] Sent initial question (truncated): %s...", first_question[:80])
     except Exception as e:
-        logger.error(f"Failed to send initial question: {e}")
+        logger.error("Failed to send initial question: %s", e)
 
     try:
         while True:
@@ -86,7 +86,8 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
                     try:
                         text_data = json.loads(message["text"])
                         transcript = text_data.get("content", "")
-                        logger.info(f"--- RECEIVED TRANSCRIPT: {transcript} ---")
+                        # Redact sensitive transcript data from logs
+                        logger.info("--- RECEIVED TRANSCRIPT (len=%d, prefix=%s...) ---", len(transcript), transcript[:60])
                         
                         # Fetch History for Consistency Checking
                         responses = db.query(models.InterviewResponse).filter(
@@ -119,7 +120,7 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
                 elif "bytes" in message and message["bytes"]:
                     # Handle voice mode — audio blob from MediaRecorder
                     data = message["bytes"]
-                    logger.info(f"--- RECEIVED AUDIO: {len(data)} BYTES ---")
+                    logger.info("--- RECEIVED AUDIO: %d BYTES ---", len(data))
                     
                     # Fetch History for Consistency Checking
                     responses = db.query(models.InterviewResponse).filter(
@@ -147,7 +148,7 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
                 continue
             
             if "error" in result:
-                logger.error(f"!!! Error Result: {result['error']} !!!")
+                logger.error("!!! Error Result (redacted): %s... !!!", str(result.get("error", ""))[:120])
                 await websocket.send_text(json.dumps({"error": result["error"]}))
                 continue
 
@@ -160,7 +161,7 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
                     "next_question": next_question,
                     "evaluation": result.get("evaluation")
                 }))
-                logger.info(f"[WS] Sent response: Q={next_question[:50]}...")
+                logger.info("[WS] Sent response: Q=%s...", next_question[:50])
 
             # Save response to DB
             current_q = context.get("current_question", "")
@@ -187,24 +188,24 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
                 interview.current_question_index = context["question_index"] + 1
                 interview.status = 'ongoing'
                 db.commit()
-                logger.info(f"[DB] Saved response for question {context['question_index']}: {current_q[:40]}...")
+                logger.info("[DB] Saved response for question index %d", context["question_index"])
             except Exception as db_err:
-                logger.error(f"[DB] Save error: {db_err}")
+                logger.error("[DB] Save error: %s", db_err)
                 db.rollback()
 
             # Update context for next round
             context["question_index"] += 1
             context["current_question"] = next_question
-            logger.info(f"[Context] Updated to question {context['question_index']}: {next_question[:40]}...")
+            logger.info("[Context] Updated to question %d", context["question_index"])
 
             # If interview completed, finalize in DB
             if context["question_index"] >= context["total_questions"]:
-                logger.info(f"Interview {interview_id} completed")
+                logger.info("Interview %d completed", interview_id)
                 from app.routes.interviews import complete_interview
                 try:
                     await complete_interview(interview_id, db)
                 except Exception as e:
-                    logger.error(f"Finalization Error: {e}")
+                    logger.error("Finalization Error: %s", e)
                 
                 await websocket.send_text(json.dumps({
                     "status": "completed",
@@ -213,9 +214,9 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
                 break
 
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for interview {interview_id}")
+        logger.info("WebSocket disconnected for interview %d", interview_id)
     except Exception as e:
-        logger.error(f"Unexpected WebSocket Error: {e}")
+        logger.error("Unexpected WebSocket Error: %s", e)
         try:
             await websocket.send_text(json.dumps({"error": str(e)}))
         except Exception:

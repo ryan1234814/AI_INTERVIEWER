@@ -21,7 +21,8 @@ DEEPGRAM_API_KEY="your_deepgram_api_key"
 NVIDIA_API_KEY="your_nvidia_api_key"
 DATABASE_URL=sqlite:///./interview_platform.db
 CHROMA_PATH=./chroma_db
-SECRET_KEY=9d25e094faa6ca2556c818166b7a9563b93f7099f6f0f4caa6cf63b88e8d3e7
+# Generate a secure SECRET_KEY:  python -c 'import secrets; print(secrets.token_hex(32))'
+SECRET_KEY="replace-with-a-generated-secret-key"
 ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 ```
