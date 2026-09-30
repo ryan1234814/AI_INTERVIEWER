@@ -47,3 +47,8 @@ chroma_db/
 backend/uploads/
 *.pdf
 !README.MD
+
+# Test & media artifacts
+.pytest_cache/
+*.mp3
+*.wav
