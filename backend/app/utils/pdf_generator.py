@@ -9,7 +9,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def generate_interview_pdf(candidate_name, job_title, evaluation_data, responses):
+def generate_interview_pdf(candidate_name, job_title, evaluation_data, responses,
+                           proctor_summary=None):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, 
@@ -139,8 +140,108 @@ def generate_interview_pdf(candidate_name, job_title, evaluation_data, responses
     elements.append(Paragraph(_safe_text(summary), styles['Normal']))
     
     elements.append(Spacer(1, 20))
+
+    # Behavioral & Soft-Skill Summary
+    beh_summary = getattr(evaluation_data, 'behavioral_summary', None)
+    if beh_summary:
+        elements.append(Paragraph("Behavioral &amp; Soft-Skill Analysis", section_style))
+        # Behavioral scores table
+        beh_data = [["Dimension", "Score / 10"]]
+        mapping = [
+            ("Clarity", beh_summary.get("avg_clarity")),
+            ("Confidence", beh_summary.get("avg_confidence")),
+            ("STAR Structure", beh_summary.get("avg_star")),
+            ("Empathy / Teamwork", beh_summary.get("avg_empathy")),
+            ("Sentiment", beh_summary.get("avg_sentiment")),
+        ]
+        for label, val in mapping:
+            beh_data.append([label, f"{val:.1f}" if val is not None else "N/A"])
+        # speech metrics row
+        if beh_summary.get("avg_filler_rate") is not None:
+            beh_data.append(["Filler Rate (%)", f"{beh_summary['avg_filler_rate']:.1f}%"])
+        if beh_summary.get("avg_wpm"):
+            beh_data.append(["Avg WPM", f"{beh_summary['avg_wpm']:.0f}"])
+        beh_table = Table(beh_data, colWidths=[250, 120])
+        beh_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#7C3AED')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F5F3FF')]),
+        ]))
+        elements.append(beh_table)
+        elements.append(Spacer(1, 10))
+        highlights = beh_summary.get("highlights", [])
+        if highlights:
+            elements.append(Paragraph("<b>Behavioral Highlights:</b>", styles['Normal']))
+            for h in highlights[:3]:
+                elements.append(Paragraph(f"&bull; {_safe_text(h)}", styles['Normal']))
+            elements.append(Spacer(1, 10))
+        # interpretation
+        ac = beh_summary.get("avg_clarity")
+        if ac is not None:
+            if ac >= 7:
+                interp = "Strong communicator — clear, structured, and confident delivery."
+            elif ac >= 5:
+                interp = "Adequate communication — generally clear with minor hesitations."
+            else:
+                interp = "Communication needs improvement — consider STAR structure and reducing filler words."
+            elements.append(Paragraph(f"<i>{_safe_text(interp)}</i>", styles['Normal']))
+            elements.append(Spacer(1, 10))
+
     elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#E5E7EB')))
     elements.append(Spacer(1, 10))
+
+    # ==============================
+    # Webcam Proctoring — Focus & Integrity
+    # ==============================
+    if proctor_summary:
+        elements.append(Paragraph("Webcam Proctoring — Focus &amp; Integrity", section_style))
+        focus_pct = proctor_summary.get("focus_pct", 0)
+        warnings = proctor_summary.get("warnings", 0)
+        devices = proctor_summary.get("device_detections", 0)
+        integrity = str(proctor_summary.get("integrity", "n/a")).replace("_", " ").title()
+        proc_data = [
+            ["Metric", "Value"],
+            ["Focus %", f"{focus_pct:.1f}%"],
+            ["Integrity", integrity],
+            ["Warnings", str(warnings)],
+            ["Device Detections (phone/laptop)", str(devices)],
+        ]
+        avg_focus = proctor_summary.get("avg_focus")
+        if avg_focus is not None:
+            proc_data.append(["Avg Reported Focus", f"{avg_focus:.1f}%"])
+        proc_table = Table(proc_data, colWidths=[250, 120])
+        proc_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0E7490')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 11),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#ECFEFF')]),
+        ]))
+        elements.append(proc_table)
+        elements.append(Spacer(1, 8))
+        counts = proctor_summary.get("counts", {})
+        if counts:
+            breakdown = " | ".join(f"{k}: {v}" for k, v in sorted(counts.items()))
+            elements.append(Paragraph(f"<b>Event breakdown:</b> {_safe_text(breakdown)}", styles['Normal']))
+            elements.append(Spacer(1, 8))
+        if warnings > 0:
+            elements.append(Paragraph(
+                f"<i>Candidate triggered {warnings} proctoring warning(s) during the session. "
+                "Please review the session recording/events before making a final decision.</i>",
+                styles['Normal']))
+            elements.append(Spacer(1, 10))
+        elements.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor('#E5E7EB')))
+        elements.append(Spacer(1, 10))
 
     # ==============================
     # Q&A History — Detailed per-question breakdown
@@ -180,6 +281,38 @@ def generate_interview_pdf(candidate_name, job_title, evaluation_data, responses
                     f"<b>AI Feedback:</b> {_safe_text(feedback_text)}",
                     feedback_style
                 ))
+
+            # Behavioral per-question breakdown
+            ba = getattr(resp, 'behavioral_analysis', None)
+            if isinstance(ba, str):
+                try:
+                    import json as _json
+                    ba = _json.loads(ba)
+                except:
+                    ba = None
+            if isinstance(ba, dict):
+                sm = ba.get("speech_metrics", {})
+                beh_lines = []
+                if ba.get("clarity") is not None:
+                    beh_lines.append(f"Clarity {ba['clarity']}/10")
+                if ba.get("confidence") is not None:
+                    beh_lines.append(f"Confidence {ba['confidence']}/10")
+                if ba.get("star_structure") is not None:
+                    beh_lines.append(f"STAR {ba['star_structure']}/10")
+                if sm.get("filler_rate") is not None:
+                    beh_lines.append(f"Fillers {sm['filler_rate']}% ({sm.get('filler_count',0)})")
+                if ba.get("sentiment_heuristic", {}).get("label"):
+                    beh_lines.append(f"Sentiment {ba['sentiment_heuristic']['label']}")
+                if beh_lines:
+                    elements.append(Paragraph(
+                        f"<b>Behavioral:</b> {_safe_text(' | '.join(beh_lines))}",
+                        ParagraphStyle('BehStyle', parent=feedback_style, textColor=colors.HexColor('#7C3AED'))
+                    ))
+                if ba.get("summary"):
+                    elements.append(Paragraph(
+                        f"<i>{_safe_text(ba['summary'])}</i>",
+                        ParagraphStyle('BehSummary', parent=feedback_style, fontSize=8, textColor=colors.HexColor('#6D28D9'))
+                    ))
             
             # Separator between questions
             elements.append(Spacer(1, 5))

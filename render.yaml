@@ -1,0 +1,53 @@
+# =============================================================================
+# Render Blueprint — AI Interviewer backend (FastAPI)
+# The frontend is deployed separately on Vercel.
+# Deploy via "New +" → Blueprint in the Render dashboard.
+# =============================================================================
+services:
+  - type: web
+    name: ai-interviewer-backend
+    runtime: python
+    # Starter/Standard recommended: heavy deps (chromadb, sentence-transformers
+    # → torch, crewai, langgraph) OOM on the free 512MB tier.
+    plan: starter
+    # Build from repo root so requirements.txt is detected.
+    rootDir: .
+    buildCommand: pip install -r requirements.txt
+    # Run from backend/ so `app.*` imports resolve; honor Render's $PORT.
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /
+    # NOTE (optional, plan step B3): to persist uploads/ and chroma_db/ across
+    # restarts, attach a Persistent Disk in the Render dashboard mounted at
+    # /opt/render/data, then CHROMA_PATH and UPLOAD_DIR below will use it.
+    # Without a disk these paths are ephemeral (recreated on each boot).
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"  # match your local venv version if it differs
+      # Mandatory — the app raises at import if this is missing/placeholder.
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        fromDatabase:
+          name: ai-interviewer-db
+          property: connectionString
+      - key: CHROMA_PATH
+        value: /opt/render/data/chroma_db
+      - key: UPLOAD_DIR
+        value: /opt/render/data/uploads
+      # Set to your actual Vercel URL (comma-separate multiple origins).
+      - key: BACKEND_CORS_ORIGINS
+        value: https://your-app.vercel.app
+      # Secrets: enter these in the Render dashboard (sync: false = not committed).
+      - key: GROQ_API_KEY
+        sync: false
+      - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: NVIDIA_API_KEY
+        sync: false
+      - key: DASHSCOPE_API_KEY
+        sync: false
+
+databases:
+  - name: ai-interviewer-db
+    plan: starter
+    databaseName: interview_platform

@@ -85,6 +85,33 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
                 if "text" in message and message["text"]:
                     try:
                         text_data = json.loads(message["text"])
+                        # --- Proctoring heartbeat / warning (not an answer) ---
+                        if text_data.get("type") == "proctor":
+                            try:
+                                from app.services import proctoring as proctor_svc
+                                clean = proctor_svc.normalize_event(
+                                    text_data.get("event_type", ""),
+                                    text_data.get("detail"),
+                                    text_data.get("focus_score"),
+                                )
+                                db.add(models.ProctorEvent(
+                                    interview_id=interview_id,
+                                    event_type=clean["event_type"],
+                                    detail=clean["detail"],
+                                    focus_score=clean["focus_score"],
+                                ))
+                                db.commit()
+                                await websocket.send_text(json.dumps({
+                                    "type": "proctor_ack",
+                                    "event_type": clean["event_type"],
+                                    "is_warning": proctor_svc.is_warning(clean["event_type"]),
+                                }))
+                            except ValueError as ve:
+                                await websocket.send_text(json.dumps({"error": str(ve)}))
+                            except Exception as pe:
+                                logger.error("Proctor save error: %s", pe)
+                                db.rollback()
+                            continue
                         transcript = text_data.get("content", "")
                         # Redact sensitive transcript data from logs
                         logger.info("--- RECEIVED TRANSCRIPT (len=%d, prefix=%s...) ---", len(transcript), transcript[:60])
@@ -159,15 +186,15 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
                 await websocket.send_text(json.dumps({
                     "transcript": transcript,
                     "next_question": next_question,
-                    "evaluation": result.get("evaluation")
+                    "evaluation": result.get("evaluation"),
+                    "behavioral": result.get("behavioral")
                 }))
                 logger.info("[WS] Sent response: Q=%s...", next_question[:50])
 
-            # Save response to DB
+            # Save response to DB — with behavioral analysis
             current_q = context.get("current_question", "")
             try:
                 eval_data = result.get("evaluation", {})
-                # Serialize evaluation as JSON for the feedback field
                 if isinstance(eval_data, dict):
                     feedback_str = json.dumps(eval_data)
                     score = eval_data.get("technical_accuracy", 0)
@@ -175,12 +202,45 @@ async def interview_websocket(websocket: WebSocket, interview_id: int, db: Sessi
                     feedback_str = str(eval_data) if eval_data else ""
                     score = 0
 
+                # Behavioral & soft-skill analysis (non-blocking, fallback on error)
+                behavioral = None
+                filler_count = None
+                filler_rate = None
+                wpm_val = None
+                sentiment_label = None
+                clarity = None
+                confidence = None
+                try:
+                    from app.services.behavioral_analysis import analyze_response
+                    job_ctx = context.get("job_description", "")
+                    behavioral = analyze_response(current_q, transcript, job_ctx)
+                    sm = behavioral.get("speech_metrics", {})
+                    filler_count = sm.get("filler_count")
+                    filler_rate = sm.get("filler_rate")
+                    wpm_val = sm.get("wpm") or None
+                    sentiment_label = behavioral.get("sentiment_heuristic", {}).get("label") or behavioral.get("sentiment")
+                    if isinstance(sentiment_label, (int, float)):
+                        sentiment_label = behavioral.get("sentiment_heuristic", {}).get("label", "neutral")
+                    clarity = behavioral.get("clarity")
+                    confidence = behavioral.get("confidence")
+                    # attach to result so client receives it
+                    result["behavioral"] = behavioral
+                except Exception as beh_err:
+                    logger.warning(f"Behavioral analysis failed: {beh_err}")
+
                 db_response = models.InterviewResponse(
                     interview_id=interview_id,
                     question_text=current_q,
                     candidate_response=transcript,
                     evaluation_score=score,
-                    feedback=feedback_str
+                    feedback=feedback_str,
+                    behavioral_analysis=behavioral,
+                    filler_count=filler_count,
+                    filler_rate=filler_rate,
+                    wpm=wpm_val,
+                    sentiment_label=str(sentiment_label) if sentiment_label else None,
+                    clarity_score=clarity,
+                    confidence_score=confidence,
                 )
                 db.add(db_response)
 

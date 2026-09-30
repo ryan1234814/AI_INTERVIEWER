@@ -71,8 +71,8 @@ class VoiceInterviewerAgent:
             should_follow_up = (completeness < 7) and not explicit_move_on
             
             if should_follow_up:
-                logger.info("[Agent] Generating FOLLOW-UP question")
-                next_raw_question = self.follow_up_agent.generate_follow_up(
+                logger.info("[Agent] Generating SIMPLIFIED RE-ASK + FOLLOW-UP")
+                next_raw_question = self.follow_up_agent.generate_simplified_reask_and_followup(
                     interview_context["current_question"],
                     transcribed_response,
                     job_context

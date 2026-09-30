@@ -34,3 +34,41 @@ Keep the question concise and natural for a voice interview (max 2 sentences).""
         except Exception as e:
             logger.error(f"FollowUpQuestionAgent error: {e}")
             return "Could you elaborate more on that project?"
+
+    def generate_simplified_reask_and_followup(self, original_question_text: str, candidate_answer: str, context: str) -> str:
+        """
+        When the candidate's answer is incomplete or unclear, re-ask the original
+        question in a much simpler, more accessible way, then follow up with a
+        probing question — all in one natural voice-friendly message.
+        """
+        reask_prompt = """You are a friendly, patient technical interviewer. The candidate just gave
+an answer that was incomplete or unclear. Your job is to:
+
+1. Re-ask the ORIGINAL QUESTION in a much simpler, plainer, more
+   accessible way (as if explaining to someone new to the topic). Keep
+   this to 1-2 short sentences.
+2. Then, add a brief follow-up that probes deeper into a specific part
+   of their answer (1 sentence).
+
+IMPORTANT:
+- The simplified re-ask must preserve the core intent of the original question.
+- Sound natural and encouraging, like a real human interviewer.
+- Keep the entire response concise — no more than 3 sentences total.
+- Do NOT use bullet points or numbering. Speak naturally.
+
+Context: {context}
+Original Question: {original_question_text}
+Candidate's Answer: {candidate_answer}
+
+Your response (simplified re-ask + follow-up):"""
+        try:
+            prompt = reask_prompt.format(
+                context=context,
+                original_question_text=original_question_text,
+                candidate_answer=candidate_answer
+            )
+            response = self.llm.invoke(prompt)
+            return response.content.strip()
+        except Exception as e:
+            logger.error(f"FollowUpQuestionAgent simplified_reask error: {e}")
+            return f"Let me rephrase that — {original_question_text}"

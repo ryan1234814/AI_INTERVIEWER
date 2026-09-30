@@ -33,11 +33,22 @@ async def get_interview_report(interview_id: int, db: Session = Depends(get_db))
     if not evaluation:
         raise HTTPException(status_code=404, detail="Evaluation not found for this interview")
 
+    proctor_summary = None
+    try:
+        from app.services import proctoring as proctor_svc
+        proctor_events = db.query(models.ProctorEvent).filter(
+            models.ProctorEvent.interview_id == interview_id
+        ).all()
+        proctor_summary = proctor_svc.summarize_events(proctor_events)
+    except Exception as e:
+        logger.warning(f"Proctor summary (report) failed: {e}")
+
     pdf_buffer = generate_interview_pdf(
         candidate.name,
         job.title,
         evaluation,
-        responses
+        responses,
+        proctor_summary=proctor_summary,
     )
     
     filename = f"Interview_Report_{candidate.name.replace(' ', '_')}.pdf"
@@ -48,7 +59,9 @@ async def get_interview_report(interview_id: int, db: Session = Depends(get_db))
     )
 
 
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "uploads")
+# Defaults to backend/uploads (unchanged); overridable via UPLOAD_DIR env
+# so Render can point it at a persistent Disk mount.
+UPLOAD_DIR = os.getenv("UPLOAD_DIR") or os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
@@ -83,6 +96,18 @@ async def get_interview(interview_id: int, db: Session = Depends(get_db)):
     responses = db.query(models.InterviewResponse).filter(
         models.InterviewResponse.interview_id == interview_id
     ).all()
+    evaluation = db.query(models.Evaluation).filter(models.Evaluation.interview_id == interview_id).first()
+
+    # Webcam proctoring summary (focus % + warnings) — empty when unused
+    proctor_summary = None
+    try:
+        from app.services import proctoring as proctor_svc
+        proctor_events = db.query(models.ProctorEvent).filter(
+            models.ProctorEvent.interview_id == interview_id
+        ).all()
+        proctor_summary = proctor_svc.summarize_events(proctor_events)
+    except Exception as e:
+        logger.warning(f"Proctor summary failed: {e}")
 
     return {
         "id": interview.id,
@@ -109,9 +134,32 @@ async def get_interview(interview_id: int, db: Session = Depends(get_db)):
                 "candidate_response": r.candidate_response,
                 "evaluation_score": r.evaluation_score,
                 "feedback": r.feedback,
+                "behavioral_analysis": r.behavioral_analysis,
+                "filler_count": r.filler_count,
+                "filler_rate": r.filler_rate,
+                "wpm": r.wpm,
+                "sentiment_label": r.sentiment_label,
+                "clarity_score": r.clarity_score,
+                "confidence_score": r.confidence_score,
             }
             for r in responses
         ],
+        "evaluation": {
+            "overall_score": evaluation.overall_score,
+            "technical_score": evaluation.technical_score,
+            "communication_score": evaluation.communication_score,
+            "relevance_score": evaluation.relevance_score,
+            "strengths": evaluation.strengths,
+            "weaknesses": evaluation.weaknesses,
+            "summary": evaluation.summary,
+            "behavioral_summary": evaluation.behavioral_summary,
+            "avg_filler_rate": evaluation.avg_filler_rate,
+            "avg_wpm": evaluation.avg_wpm,
+            "avg_clarity": evaluation.avg_clarity,
+            "avg_confidence": evaluation.avg_confidence,
+            "avg_star": evaluation.avg_star,
+        } if evaluation else None,
+        "proctor_summary": proctor_summary,
     }
 
 
@@ -256,11 +304,26 @@ async def submit_response(
     job = db.query(models.JobDescription).filter(models.JobDescription.id == interview.job_id).first()
     candidate = db.query(models.Candidate).filter(models.Candidate.id == interview.candidate_id).first()
 
-    # Save the response
+    # Behavioral analysis for text-mode responses
+    behavioral = None
+    try:
+        from app.services.behavioral_analysis import analyze_response
+        behavioral = analyze_response(question_text, candidate_response, job.description if job else "")
+    except Exception as e:
+        logger.warning(f"Behavioral analysis (text mode) failed: {e}")
+
+    sm = (behavioral or {}).get("speech_metrics", {})
     response_record = models.InterviewResponse(
         interview_id=interview_id,
         question_text=question_text,
         candidate_response=candidate_response,
+        behavioral_analysis=behavioral,
+        filler_count=sm.get("filler_count"),
+        filler_rate=sm.get("filler_rate"),
+        wpm=sm.get("wpm"),
+        sentiment_label=(behavioral or {}).get("sentiment_heuristic", {}).get("label"),
+        clarity_score=(behavioral or {}).get("clarity"),
+        confidence_score=(behavioral or {}).get("confidence"),
     )
     db.add(response_record)
 
@@ -308,6 +371,7 @@ async def submit_response(
     return {
         "response_id": response_record.id,
         "evaluation": evaluation,
+        "behavioral": behavioral,
         "next_question": next_question,
         "current_index": interview.current_question_index,
         "total_questions": interview.total_questions,
@@ -394,20 +458,119 @@ async def complete_interview(interview_id: int, db: Session = Depends(get_db)):
         f"{'Strong performance overall.' if avg_score >= 7 else 'Adequate performance with room for improvement.' if avg_score >= 5 else 'Below expectations — further preparation recommended.'}"
     )
 
+    # --- Behavioral aggregate ---
+    behavioral_scores = {"clarity": [], "confidence": [], "star_structure": [], "empathy_teamwork": [], "sentiment": []}
+    filler_rates = []
+    wpms = []
+    behavioral_summaries = []
+    for resp in responses:
+        ba = resp.behavioral_analysis
+        if isinstance(ba, str):
+            try:
+                ba = json.loads(ba)
+            except:
+                ba = None
+        if isinstance(ba, dict):
+            for k in behavioral_scores:
+                if ba.get(k) is not None:
+                    try:
+                        behavioral_scores[k].append(float(ba[k]))
+                    except:
+                        pass
+            if ba.get("summary"):
+                behavioral_summaries.append(ba["summary"])
+            sm = ba.get("speech_metrics", {})
+            if sm.get("filler_rate") is not None:
+                filler_rates.append(float(sm["filler_rate"]))
+            if sm.get("wpm"):
+                wpms.append(float(sm["wpm"]))
+        # fallback to direct columns
+        if resp.filler_rate is not None and resp.filler_rate not in filler_rates:
+            filler_rates.append(float(resp.filler_rate))
+        if resp.clarity_score is not None and resp.clarity_score not in behavioral_scores["clarity"]:
+            pass  # already captured via ba
+
+    # If still empty, run behavioral analysis on-the-fly for responses missing it
+    if not any(behavioral_scores.values()) and responses:
+        try:
+            from app.services.behavioral_analysis import analyze_response
+            job_ctx = job.description if job else ""
+            for resp in responses:
+                if not resp.behavioral_analysis:
+                    ba = analyze_response(resp.question_text or "", resp.candidate_response or "", job_ctx)
+                    resp.behavioral_analysis = ba
+                    resp.filler_rate = ba.get("speech_metrics", {}).get("filler_rate")
+                    resp.filler_count = ba.get("speech_metrics", {}).get("filler_count")
+                    resp.clarity_score = ba.get("clarity")
+                    resp.confidence_score = ba.get("confidence")
+                    for k in behavioral_scores:
+                        if ba.get(k) is not None:
+                            behavioral_scores[k].append(float(ba[k]))
+                    filler_rates.append(ba.get("speech_metrics", {}).get("filler_rate", 0))
+                    behavioral_summaries.append(ba.get("summary", ""))
+            db.commit()
+        except Exception as e:
+            logger.warning(f"On-the-fly behavioral aggregation failed: {e}")
+
+    def _avg(arr):
+        return round(sum(arr)/len(arr), 1) if arr else None
+
+    avg_clarity = _avg(behavioral_scores["clarity"])
+    avg_confidence = _avg(behavioral_scores["confidence"])
+    avg_star = _avg(behavioral_scores["star_structure"])
+    avg_empathy = _avg(behavioral_scores["empathy_teamwork"])
+    avg_sentiment = _avg(behavioral_scores["sentiment"])
+    avg_filler = round(sum(filler_rates)/len(filler_rates), 1) if filler_rates else None
+    avg_wpm_val = round(sum(wpms)/len(wpms), 1) if wpms else None
+
+    # refine communication score using behavioral clarity/confidence if available
+    if avg_clarity is not None and avg_confidence is not None:
+        comm_score = round((avg_clarity + avg_confidence + min(avg_score + 0.5, 10)) / 3, 1)
+    else:
+        comm_score = round(min(avg_score + 0.5, 10), 1)
+
+    behavioral_summary = {
+        "avg_clarity": avg_clarity,
+        "avg_confidence": avg_confidence,
+        "avg_star": avg_star,
+        "avg_empathy": avg_empathy,
+        "avg_sentiment": avg_sentiment,
+        "avg_filler_rate": avg_filler,
+        "avg_wpm": avg_wpm_val,
+        "highlights": behavioral_summaries[:3],
+    }
+
     evaluation = models.Evaluation(
         interview_id=interview_id,
         overall_score=round(avg_score, 1),
         technical_score=round(avg_score, 1),
-        communication_score=round(min(avg_score + 0.5, 10), 1),
+        communication_score=comm_score,
         relevance_score=round(max(avg_score - 0.3, 0), 1),
         strengths=strengths,
         weaknesses=weaknesses,
         summary=summary,
+        behavioral_summary=behavioral_summary,
+        avg_filler_rate=avg_filler,
+        avg_wpm=avg_wpm_val,
+        avg_clarity=avg_clarity,
+        avg_confidence=avg_confidence,
+        avg_star=avg_star,
     )
     db.add(evaluation)
     db.commit()
 
-    return {"status": "completed", "overall_score": avg_score}
+    # Webcam proctoring aggregate for the final report
+    proctor_summary = None
+    try:
+        from app.services import proctoring as proctor_svc
+        proctor_events = db.query(models.ProctorEvent).filter(
+            models.ProctorEvent.interview_id == interview_id
+        ).all()
+        proctor_summary = proctor_svc.summarize_events(proctor_events)
+    except Exception as e:
+        logger.warning(f"Proctor aggregation on complete failed: {e}")
+
+    return {"status": "completed", "overall_score": avg_score, "behavioral_summary": behavioral_summary, "proctor_summary": proctor_summary}
 
 
 def _generate_fallback_questions(job_title, skills, experience_level, count):

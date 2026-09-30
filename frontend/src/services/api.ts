@@ -1,6 +1,10 @@
 import axios from 'axios';
 
-const API_BASE = '/api/v1';
+// Production uses the absolute Render backend URL (VITE_API_URL); local dev
+// falls back to the relative path so the Vite proxy keeps working unchanged.
+const API_BASE = import.meta.env.VITE_API_URL
+  ? `${import.meta.env.VITE_API_URL.replace(/\/$/, '')}/api/v1`
+  : '/api/v1';
 
 const api = axios.create({
   baseURL: API_BASE,
@@ -50,7 +54,39 @@ export interface InterviewDetail {
     candidate_response: string;
     evaluation_score: number | null;
     feedback: string | null;
+    behavioral_analysis: any | null;
+    filler_count: number | null;
+    filler_rate: number | null;
+    wpm: number | null;
+    sentiment_label: string | null;
+    clarity_score: number | null;
+    confidence_score: number | null;
   }[];
+  evaluation: {
+    overall_score: number;
+    technical_score: number;
+    communication_score: number;
+    relevance_score: number;
+    strengths: string[];
+    weaknesses: string[];
+    summary: string;
+    behavioral_summary: any | null;
+    avg_filler_rate: number | null;
+    avg_wpm: number | null;
+    avg_clarity: number | null;
+    avg_confidence: number | null;
+    avg_star: number | null;
+  } | null;
+  proctor_summary: {
+    total_events: number;
+    counts: Record<string, number>;
+    warnings: number;
+    device_detections: number;
+    distracted_events: number;
+    avg_focus: number | null;
+    focus_pct: number;
+    integrity: string;
+  } | null;
 }
 
 export interface InterviewListItem {
@@ -116,6 +152,29 @@ export const downloadReport = async (interviewId: number, candidateName: string)
     console.error('Failed to download report:', error);
     throw error;
   }
+};
+
+export interface ProctorEventPayload {
+  event_type: string;
+  detail?: string;
+  focus_score?: number;
+}
+
+export const reportProctorEvent = async (
+  interviewId: number,
+  payload: ProctorEventPayload,
+): Promise<void> => {
+  try {
+    await api.post(`/interviews/${interviewId}/proctor-event`, payload);
+  } catch (error) {
+    // Proctor logging is best-effort — never break the interview over it.
+    console.warn('Failed to log proctor event:', error);
+  }
+};
+
+export const getProctorSummary = async (interviewId: number) => {
+  const response = await api.get(`/interviews/${interviewId}/proctor-summary`);
+  return response.data;
 };
 
 export default api;

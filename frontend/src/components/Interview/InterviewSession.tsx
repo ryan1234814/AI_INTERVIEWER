@@ -1,9 +1,11 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, MicOff, Send, MessageSquare, Shield, AlertCircle, Loader2, Sparkles, Volume2, Download, Check, Bot, User } from 'lucide-react';
+import { Mic, MicOff, Send, MessageSquare, ShieldCheck, AlertCircle, Loader2, Volume2, Download, Check, Bot, User } from 'lucide-react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
 import { getInterview, downloadReport } from '../../services/api';
+import BehavioralInsights from './BehavioralInsights';
+import ProctorMonitor from './ProctorMonitor';
 
 interface Props {
   interviewId: string;
@@ -422,166 +424,148 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
     }
   };
 
+  const connected = status === 'connected';
+
   return (
-    <div className="max-w-5xl mx-auto space-y-6">
-      {/* Session Header */}
-      <motion.div 
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="glass-card p-5 rounded-3xl flex flex-wrap items-center justify-between gap-4"
-      >
-        <div className="flex items-center gap-4">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-blue-500/20 to-emerald-500/20 flex items-center justify-center">
-            <Sparkles className="w-5 h-5 text-blue-400" />
+    <div className="max-w-5xl mx-auto space-y-4">
+      {/* Session header */}
+      <div className="panel rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div
+            className="w-9 h-9 rounded-lg flex items-center justify-center"
+            style={{ background: 'var(--accent-subtle)', border: '1px solid var(--accent-border)' }}
+          >
+            <Bot className="w-4.5 h-4.5" style={{ color: 'var(--accent-text)' }} />
           </div>
           <div>
-            <h3 className="font-bold text-lg">{interviewDetail?.job?.title || 'AI Interview'}</h3>
-            <p className="text-white/40 text-sm flex items-center gap-1.5">
-              <Shield className="w-3 h-3" /> Secure AI Session
+            <h3 className="font-semibold text-[15px] leading-tight">{interviewDetail?.job?.title || 'AI Interview'}</h3>
+            <p className="text-xs mt-0.5 flex items-center gap-1.5" style={{ color: 'var(--foreground-tertiary)' }}>
+              <ShieldCheck className="w-3 h-3" style={{ color: 'var(--success)' }} />
+              Secure session
               {interviewDetail?.candidate?.name && (
                 <>
-                  <span className="text-white/20">•</span>
-                  <span>{interviewDetail.candidate.name}</span>
+                  <span>•</span>
+                  <span style={{ color: 'var(--foreground-secondary)' }}>{interviewDetail.candidate.name}</span>
                 </>
               )}
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          {/* Text mode toggle */}
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => setTextMode(!textMode)}
-            className={`p-2.5 rounded-xl transition-all duration-300 ${
-              textMode 
-                ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30' 
-                : 'bg-white/5 hover:bg-white/10 text-white/60 border border-transparent'
-            }`}
+            className="icon-btn"
+            style={textMode ? { background: 'var(--accent-subtle)', borderColor: 'var(--accent-border)', color: 'var(--accent-text)' } : undefined}
             title={textMode ? 'Switch to voice mode' : 'Switch to text mode'}
           >
             {textMode ? <Mic className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
           </button>
 
-          {/* Connection status */}
-          <div className={`px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 ${
-            status === 'connected' 
-              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
-              : 'bg-red-500/10 text-red-400 border border-red-500/20'
-          }`}>
-            <div className={`w-1.5 h-1.5 rounded-full ${status === 'connected' ? 'bg-emerald-400 animate-pulse' : 'bg-red-400'}`} />
+          <span
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border"
+            style={{
+              background: connected ? 'var(--success-subtle)' : 'var(--danger-subtle)',
+              borderColor: connected ? 'var(--success-border)' : 'var(--danger-border)',
+              color: connected ? 'var(--success)' : 'var(--danger)',
+            }}
+          >
+            <span className="w-1.5 h-1.5 rounded-full" style={{ background: connected ? 'var(--success)' : 'var(--danger)' }} />
             {status.toUpperCase()}
-          </div>
+          </span>
         </div>
-      </motion.div>
+      </div>
 
-      {/* Progress Bar */}
+      {/* Progress */}
       {!isCompleted && (
-        <motion.div 
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1 }}
-          className="glass-card p-4 rounded-2xl"
-        >
+        <div className="panel rounded-xl p-4">
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-medium text-white/40">Interview Progress</span>
-            <span className="text-xs font-bold text-white/60">{answeredCount} / {totalQuestions} questions</span>
+            <span className="label-eyebrow">Interview progress</span>
+            <span className="text-xs font-medium tabular-nums" style={{ color: 'var(--foreground-secondary)' }}>
+              {answeredCount} / {totalQuestions} questions
+            </span>
           </div>
-          <div className="h-2 bg-white/5 rounded-full overflow-hidden">
-            <motion.div 
-              className="h-full bg-gradient-to-r from-blue-500 via-emerald-500 to-blue-500 rounded-full bg-[length:200%_100%] animate-gradient-shift"
+          <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--overlay-light)' }}>
+            <motion.div
+              className="h-full rounded-full"
+              style={{ background: 'var(--accent)' }}
               initial={{ width: 0 }}
               animate={{ width: `${progressPercent}%` }}
-              transition={{ duration: 0.5, ease: 'easeOut' }}
+              transition={{ duration: 0.4, ease: 'easeOut' }}
             />
           </div>
-        </motion.div>
+        </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main Interaction Area */}
-        <div className="lg:col-span-2 space-y-6">
-          <motion.div 
-            initial={{ opacity: 0, scale: 0.98 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.15 }}
-            className="glass-card p-8 rounded-[2.5rem] relative overflow-hidden min-h-[420px] flex flex-col"
-          >
-            {/* Subtle gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/[0.02] via-transparent to-emerald-500/[0.02] pointer-events-none" />
-
-            <div className="relative flex-1 space-y-8">
-              {/* Question Display */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Main interaction area */}
+        <div className="lg:col-span-2">
+          <div className="panel rounded-xl p-6 md:p-8 min-h-[420px] flex flex-col">
+            <div className="flex-1 space-y-6">
+              {/* Question */}
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-lg bg-blue-500/15 flex items-center justify-center">
-                    <Bot className="w-3.5 h-3.5 text-blue-400" />
-                  </div>
-                  <span className="text-[11px] font-bold text-blue-400 uppercase tracking-widest">Interviewer</span>
+                  <span className="label-eyebrow">Interviewer</span>
                   {isSpeaking && (
-                    <div className="flex items-center gap-1.5 ml-2 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                      <Volume2 className="w-3 h-3 text-emerald-400" />
-                      <span className="text-[10px] text-emerald-400 font-bold">Speaking</span>
-                      <div className="flex items-end gap-0.5 h-3">
-                        {[...Array(3)].map((_, i) => (
-                          <div
-                            key={i}
-                            className="w-0.5 bg-emerald-400 rounded-full animate-pulse"
-                            style={{ height: `${4 + i * 3}px`, animationDelay: `${i * 0.15}s` }}
-                          />
-                        ))}
-                      </div>
-                    </div>
+                    <span
+                      className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-semibold"
+                      style={{ background: 'var(--success-subtle)', color: 'var(--success)' }}
+                    >
+                      <Volume2 className="w-3 h-3" />
+                      Speaking
+                    </span>
                   )}
                 </div>
-                <motion.p 
+                <motion.p
                   key={currentQuestion}
-                  initial={{ opacity: 0, y: 10 }}
+                  initial={{ opacity: 0, y: 6 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="text-xl md:text-2xl font-medium leading-relaxed pl-8"
+                  transition={{ duration: 0.25 }}
+                  className="text-xl md:text-2xl font-medium leading-relaxed"
                 >
                   {currentQuestion}
                 </motion.p>
               </div>
 
-              {/* Voice Visualization / Status */}
+              {/* Voice visualization / status */}
               <div className="h-32 flex flex-col items-center justify-center gap-3">
                 <AnimatePresence mode="wait">
                   {isRecording && (
                     <motion.div
                       key="recording"
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.8 }}
-                      className="flex flex-col items-center gap-3"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="flex flex-col items-center gap-3 w-full"
                     >
-                      {/* Waveform */}
-                      <div className="flex items-end gap-1 h-12">
+                      <div className="flex items-end gap-[3px] h-12">
                         {[...Array(16)].map((_, i) => (
                           <motion.div
                             key={i}
-                            animate={{ height: [8, 32 + Math.random() * 16, 12, 28 + Math.random() * 12, 8] }}
-                            transition={{ duration: 1 + Math.random() * 0.5, repeat: Infinity, delay: i * 0.06 }}
-                            className="w-1 bg-gradient-to-t from-blue-500 to-blue-400 rounded-full"
+                            animate={{ height: [8, 28 + Math.random() * 12, 12, 24, 8] }}
+                            transition={{ duration: 1 + Math.random() * 0.4, repeat: Infinity, delay: i * 0.05 }}
+                            className="w-[3px] rounded-full"
+                            style={{ background: 'var(--accent-light, #6366f1)' }}
                           />
                         ))}
                       </div>
-                      {/* Live interim transcription feedback */}
                       <AnimatePresence>
                         {interimText ? (
-                          <motion.p 
-                            initial={{ opacity: 0, y: 5 }}
-                            animate={{ opacity: 1, y: 0 }}
+                          <motion.p
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
-                            className="text-white/40 text-sm italic text-center max-w-md truncate px-4"
+                            className="text-sm text-center max-w-md truncate px-4"
+                            style={{ color: 'var(--foreground-secondary)' }}
                           >
                             {interimText}
                           </motion.p>
                         ) : transcriptBufferRef.current && !interimText ? (
-                          <p className="text-emerald-400/60 text-sm italic text-center max-w-md truncate px-4">
+                          <p className="text-sm text-center max-w-md truncate px-4" style={{ color: 'var(--success)' }}>
                             ✓ {transcriptBufferRef.current.substring(0, 80)}...
                           </p>
                         ) : (
-                          <p className="text-white/20 text-sm font-light italic">Listening for your answer...</p>
+                          <p className="text-sm" style={{ color: 'var(--foreground-tertiary)' }}>Listening for your answer…</p>
                         )}
                       </AnimatePresence>
                     </motion.div>
@@ -590,88 +574,61 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
                   {isProcessing && (
                     <motion.div
                       key="processing"
-                      initial={{ opacity: 0, scale: 0.8 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      exit={{ opacity: 0, scale: 0.8 }}
-                      className="flex items-center gap-3 text-blue-400/80"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="flex items-center gap-2.5"
+                      style={{ color: 'var(--foreground-secondary)' }}
                     >
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      <span className="text-sm font-medium">Processing your answer...</span>
+                      <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--accent-text)' }} />
+                      <span className="text-sm">Processing your answer…</span>
                     </motion.div>
                   )}
 
                   {!isRecording && !isProcessing && isSpeaking && (
-                    <motion.div
-                      key="ai-speaking"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="flex items-center gap-2"
-                    >
-                      <div className="flex items-end gap-0.5 h-4">
-                        {[...Array(5)].map((_, i) => (
-                          <div
-                            key={i}
-                            className="w-0.5 bg-emerald-400/40 rounded-full animate-pulse"
-                            style={{ height: `${4 + i * 2}px`, animationDelay: `${i * 0.1}s` }}
-                          />
-                        ))}
-                      </div>
-                      <p className="text-white/30 text-sm font-light italic">AI is speaking — mic will auto-start</p>
-                    </motion.div>
+                    <motion.p key="ai-speaking" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-sm" style={{ color: 'var(--foreground-tertiary)' }}>
+                      AI is speaking — mic will auto-start
+                    </motion.p>
                   )}
 
                   {!isRecording && !isProcessing && !isSpeaking && !isCompleted && (
-                    <motion.div
-                      key="idle"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="text-center"
-                    >
-                      <p className="text-white/20 text-sm font-light italic">
-                        {textMode ? 'Type your response below' : 'Click the mic button to start answering'}
-                      </p>
-                    </motion.div>
+                    <motion.p key="idle" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="text-sm" style={{ color: 'var(--foreground-tertiary)' }}>
+                      {textMode ? 'Type your response below' : 'Click the mic button to start answering'}
+                    </motion.p>
                   )}
                 </AnimatePresence>
               </div>
             </div>
 
-            {/* Interaction Footer */}
-            <div className="relative mt-auto pt-8">
-              <div className="h-px bg-gradient-to-r from-transparent via-white/5 to-transparent absolute top-0 left-0 right-0" />
-              
+            {/* Footer */}
+            <div className="mt-auto pt-6">
+              <div className="divider mb-6" />
+
               {isCompleted ? (
-                <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-center space-y-4 pt-2"
-                >
-                  <div className="inline-flex items-center gap-2 px-5 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm font-semibold">
+                <div className="text-center space-y-4">
+                  <span
+                    className="inline-flex items-center gap-2 px-3 py-1 rounded-md text-sm font-semibold"
+                    style={{ background: 'var(--success-subtle)', color: 'var(--success)' }}
+                  >
                     <Check className="w-4 h-4" />
-                    Interview Complete
-                  </div>
+                    Interview complete
+                  </span>
                   <div>
-                    <button
-                      onClick={handleDownloadReport}
-                      disabled={isDownloading}
-                      className="px-8 py-4 rounded-2xl bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-bold transition-all duration-300 shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/30 flex items-center justify-center gap-2 mx-auto disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
+                    <button onClick={handleDownloadReport} disabled={isDownloading} className="btn btn-primary mx-auto">
                       {isDownloading ? (
                         <>
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                          Generating Report...
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          Generating report…
                         </>
                       ) : (
                         <>
-                          <Download className="w-5 h-5" />
-                          Download PDF Report
+                          <Download className="w-4 h-4" />
+                          Download PDF report
                         </>
                       )}
                     </button>
                   </div>
-                </motion.div>
+                </div>
               ) : textMode ? (
                 <div className="flex gap-3">
                   <input
@@ -680,13 +637,13 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
                     onChange={(e) => setTextInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
                     placeholder="Type your response..."
-                    className="flex-1 bg-white/[0.03] border border-white/10 rounded-2xl px-5 py-4 focus:outline-none focus:border-blue-500/50 focus:bg-white/[0.05] transition-all text-white placeholder:text-white/20"
+                    className="input flex-1"
                     disabled={isProcessing}
                   />
                   <button
                     onClick={handleSendMessage}
                     disabled={isProcessing}
-                    className="p-4 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white transition-all duration-300 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 disabled:opacity-50"
+                    className="btn btn-primary px-4"
                   >
                     {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                   </button>
@@ -694,154 +651,157 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
               ) : (
                 <div className="flex justify-center">
                   <div className="relative">
-                    {/* Pulse rings when recording */}
                     {isRecording && (
-                      <>
-                        <div className="absolute inset-0 rounded-full bg-red-500/20 pulse-ring" />
-                        <div className="absolute inset-0 rounded-full bg-red-500/15 pulse-ring" style={{ animationDelay: '0.5s' }} />
-                      </>
+                      <div className="absolute inset-0 rounded-full pulse-ring" style={{ background: 'var(--danger-subtle)' }} />
                     )}
                     <button
                       onClick={toggleRecording}
                       disabled={isSpeaking || isProcessing}
-                      className={`relative w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300 ${
+                      className="relative w-20 h-20 rounded-full flex items-center justify-center transition-colors"
+                      style={
                         isSpeaking || isProcessing
-                          ? 'bg-white/5 text-white/20 cursor-not-allowed border border-white/5'
+                          ? { background: 'var(--overlay-light)', color: 'var(--foreground-tertiary)', border: '1px solid var(--card-border)', cursor: 'not-allowed' }
                           : isRecording
-                          ? 'bg-red-500 text-white shadow-[0_0_50px_rgba(239,68,68,0.35)] scale-105'
-                          : 'bg-gradient-to-br from-blue-500 to-blue-600 text-white hover:from-blue-400 hover:to-blue-500 shadow-[0_0_30px_rgba(59,130,246,0.3)] hover:shadow-[0_0_40px_rgba(59,130,246,0.4)] hover:scale-105 active:scale-95'
-                      }`}
+                          ? { background: 'var(--danger)', color: '#fff' }
+                          : { background: 'var(--accent)', color: '#fff' }
+                      }
                     >
                       {isRecording ? <MicOff className="w-7 h-7" /> : <Mic className="w-7 h-7" />}
                     </button>
+                    {!isRecording && !isSpeaking && !isProcessing && (
+                      <div className="absolute -bottom-7 left-1/2 -translate-x-1/2 whitespace-nowrap">
+                        <span className="text-[11px]" style={{ color: 'var(--foreground-tertiary)' }}>Click to speak</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
             </div>
-          </motion.div>
+          </div>
         </div>
 
         {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Candidate Skills */}
-          <motion.div 
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
-            className="glass-card p-6 rounded-3xl space-y-4"
-          >
-            <h4 className="text-xs font-bold text-white/40 uppercase tracking-widest">Candidate Skills</h4>
+        <div className="space-y-4">
+          <ProctorMonitor interviewId={interviewId} />
+
+          {/* Candidate skills */}
+          <div className="panel rounded-xl p-5 space-y-3">
+            <h4 className="label-eyebrow">Candidate skills</h4>
             <div className="flex flex-wrap gap-1.5">
               {Array.isArray(interviewDetail?.candidate?.extracted_skills) ? (
                 interviewDetail.candidate.extracted_skills.map((skill: string, i: number) => (
-                  <span key={i} className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/8 text-[11px] font-medium text-white/60 hover:text-white/80 hover:border-white/15 transition-colors">
+                  <span key={i} className="chip" style={{ background: 'var(--accent-subtle)', borderColor: 'var(--accent-border)', color: 'var(--accent-text)' }}>
                     {skill}
                   </span>
                 ))
               ) : typeof interviewDetail?.candidate?.extracted_skills === 'string' ? (
                 (interviewDetail.candidate.extracted_skills as string).split(',').map((skill: string, i: number) => (
-                  <span key={i} className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/8 text-[11px] font-medium text-white/60 hover:text-white/80 hover:border-white/15 transition-colors">
+                  <span key={i} className="chip" style={{ background: 'var(--accent-subtle)', borderColor: 'var(--accent-border)', color: 'var(--accent-text)' }}>
                     {skill.trim()}
                   </span>
                 ))
               ) : (
-                <p className="text-xs text-white/30 italic">No skills extracted yet</p>
+                <p className="text-xs" style={{ color: 'var(--foreground-tertiary)' }}>No skills extracted yet</p>
               )}
             </div>
             {interviewDetail?.candidate?.experience_summary && (
-              <p className="text-xs text-white/35 leading-relaxed italic pt-2 border-t border-white/5">
+              <p className="text-xs leading-relaxed pt-2 border-t" style={{ color: 'var(--foreground-tertiary)', borderColor: 'var(--border-subtle)' }}>
                 {interviewDetail.candidate.experience_summary}
               </p>
             )}
-          </motion.div>
+          </div>
 
-          {/* Live Transcript */}
-          <motion.div 
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.3 }}
-            className="glass-card p-6 rounded-3xl flex-1 overflow-hidden flex flex-col max-h-[420px]"
-          >
-            <h4 className="text-xs font-bold text-white/40 uppercase tracking-widest mb-4">Live Transcript</h4>
+          {/* Behavioral aggregate (when completed) */}
+          {interviewDetail?.evaluation?.behavioral_summary && (
+            <BehavioralInsights behavioral={{
+              clarity: interviewDetail.evaluation.behavioral_summary.avg_clarity,
+              confidence: interviewDetail.evaluation.behavioral_summary.avg_confidence,
+              star_structure: interviewDetail.evaluation.behavioral_summary.avg_star,
+              empathy_teamwork: interviewDetail.evaluation.behavioral_summary.avg_empathy,
+              sentiment: interviewDetail.evaluation.behavioral_summary.avg_sentiment,
+              speech_metrics: { filler_rate: interviewDetail.evaluation.behavioral_summary.avg_filler_rate, wpm: interviewDetail.evaluation.behavioral_summary.avg_wpm, word_count: null },
+              summary: interviewDetail.evaluation.behavioral_summary.highlights?.[0],
+              strengths: [], improvements: []
+            }} />
+          )}
+
+          {/* Live transcript */}
+          <div className="panel rounded-xl p-5 flex-1 overflow-hidden flex flex-col max-h-[420px]">
+            <h4 className="label-eyebrow mb-3">Live transcript</h4>
             <div className="flex-1 overflow-y-auto space-y-4 pr-2 custom-scrollbar">
-              {status === 'connected' && messages.length === 0 && (
-                <div className="flex items-center justify-center gap-2 text-blue-400/40 py-8">
-                  <div className="w-4 h-4 border-2 border-blue-400/20 border-t-blue-400 rounded-full animate-spin" />
-                  <span className="text-xs">Waiting for AI interviewer...</span>
+              {connected && messages.length === 0 && (
+                <div className="flex items-center justify-center gap-2 py-8" style={{ color: 'var(--foreground-tertiary)' }}>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-xs">Waiting for AI interviewer…</span>
                 </div>
               )}
               {messages.map((msg, i) => {
                 if (msg.error) return (
-                  <div key={i} className="flex items-start gap-2 text-red-400 bg-red-500/10 border border-red-500/15 p-3 rounded-2xl">
-                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
-                    <p className="text-xs leading-relaxed">{msg.error}</p>
+                  <div key={i} className="flex items-start gap-2 p-3 rounded-lg" style={{ background: 'var(--danger-subtle)', border: '1px solid var(--danger-border)' }}>
+                    <AlertCircle className="w-3.5 h-3.5 mt-0.5 shrink-0" style={{ color: 'var(--danger)' }} />
+                    <p className="text-xs leading-relaxed" style={{ color: 'var(--danger)' }}>{msg.error}</p>
                   </div>
                 );
                 if (msg.transcript) return (
                   <div key={i} className="space-y-2">
                     {/* User message */}
                     <div className="flex items-start gap-2">
-                      <div className="w-5 h-5 rounded-lg bg-emerald-500/15 flex items-center justify-center shrink-0 mt-0.5">
-                        <User className="w-3 h-3 text-emerald-400" />
+                      <div className="w-5 h-5 rounded-md flex items-center justify-center shrink-0 mt-0.5" style={{ background: 'var(--overlay-light)', border: '1px solid var(--card-border)' }}>
+                        <User className="w-3 h-3" style={{ color: 'var(--foreground-secondary)' }} />
                       </div>
-                      <p className="text-xs text-white/70 bg-emerald-500/5 border border-emerald-500/10 p-3 rounded-2xl rounded-tl-none leading-relaxed">
+                      <p className="text-xs leading-relaxed p-3 rounded-lg" style={{ background: 'var(--overlay-light)', color: 'var(--foreground-secondary)', border: '1px solid var(--border-subtle)' }}>
                         {msg.transcript}
                       </p>
                     </div>
-                    {/* AI Insight */}
+                    {/* AI insight */}
                     {msg.evaluation && (
-                      <div className="ml-7 space-y-1.5 border-l border-white/5 pl-3">
-                        <div className="flex items-center gap-1.5">
-                          <Sparkles className="w-3 h-3 text-blue-400" />
-                          <p className="text-[10px] font-bold text-blue-400 uppercase tracking-wider">AI Insight</p>
-                        </div>
-                        <div className="text-[11px] text-white/50 bg-white/[0.03] border border-white/5 p-2.5 rounded-xl">
+                      <div className="ml-7 space-y-1.5 pl-3 border-l" style={{ borderColor: 'var(--border-subtle)' }}>
+                        <span className="label-eyebrow">AI insight</span>
+                        <div className="text-[11px] p-2.5 rounded-lg" style={{ background: 'var(--overlay-lighter)', border: '1px solid var(--border-subtle)', color: 'var(--foreground-secondary)' }}>
                           {typeof msg.evaluation === 'object' && (
                             <div className="flex items-center gap-2 mb-1.5">
-                              <span className="text-blue-400/80 font-medium">Accuracy:</span>
+                              <span className="font-medium">Accuracy:</span>
                               <div className="flex gap-0.5">
                                 {[...Array(10)].map((_, j) => (
-                                  <div key={j} className={`w-1.5 h-1.5 rounded-full ${j < (msg.evaluation as any).technical_accuracy ? 'bg-blue-400' : 'bg-white/10'}`} />
+                                  <span key={j} className="w-1.5 h-1.5 rounded-full" style={{ background: j < (msg.evaluation as any).technical_accuracy ? 'var(--accent)' : 'var(--card-border)' }} />
                                 ))}
                               </div>
-                              <span className="text-blue-400/60 text-[10px]">{(msg.evaluation as any).technical_accuracy}/10</span>
+                              <span className="text-[10px] tabular-nums">{(msg.evaluation as any).technical_accuracy}/10</span>
                             </div>
                           )}
-                          <p className="line-clamp-2 italic text-white/40">
+                          <p className="italic">
                             &ldquo;{typeof msg.evaluation === 'object' ? msg.evaluation.feedback : msg.evaluation}&rdquo;
                           </p>
                         </div>
                       </div>
                     )}
+                    {/* Behavioral compact */}
+                    {(msg as any).behavioral && <div className="ml-7"><BehavioralInsights behavioral={(msg as any).behavioral} compact /></div>}
                   </div>
                 );
                 return null;
               })}
               {latestMsg?.status === 'completed' && (
-                <div className="mt-4 p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-center space-y-3">
-                  <Check className="w-8 h-8 text-emerald-400 mx-auto" />
-                  <h5 className="font-bold text-emerald-400 text-sm">Interview Complete!</h5>
-                  <button
-                    onClick={handleDownloadReport}
-                    disabled={isDownloading}
-                    className="w-full py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-500 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
+                <div className="mt-2 p-4 rounded-lg text-center space-y-3" style={{ background: 'var(--success-subtle)', border: '1px solid var(--success-border)' }}>
+                  <Check className="w-8 h-8 mx-auto" style={{ color: 'var(--success)' }} />
+                  <h5 className="font-semibold text-sm" style={{ color: 'var(--success)' }}>Interview complete</h5>
+                  <button onClick={handleDownloadReport} disabled={isDownloading} className="btn btn-primary w-full">
                     {isDownloading ? (
                       <>
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        Downloading...
+                        Downloading…
                       </>
                     ) : (
                       <>
                         <Download className="w-4 h-4" />
-                        Download Report
+                        Download report
                       </>
                     )}
                   </button>
                 </div>
               )}
             </div>
-          </motion.div>
+          </div>
         </div>
       </div>
     </div>

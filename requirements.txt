@@ -16,6 +16,7 @@ sentence-transformers
 # Database
 sqlalchemy
 alembic
+psycopg2-binary
 
 # Voice & Utils
 deepgram-sdk

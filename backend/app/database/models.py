@@ -51,8 +51,40 @@ class InterviewResponse(Base):
     audio_path = Column(String, nullable=True)
     evaluation_score = Column(Float, nullable=True)
     feedback = Column(Text, nullable=True)
+    # Behavioral & soft-skill fields
+    behavioral_analysis = Column(JSON, nullable=True)  # full STAR + soft-skill breakdown
+    filler_count = Column(Integer, nullable=True)
+    filler_rate = Column(Float, nullable=True)
+    wpm = Column(Integer, nullable=True)
+    sentiment_label = Column(String, nullable=True)
+    clarity_score = Column(Float, nullable=True)
+    confidence_score = Column(Float, nullable=True)
     
     interview = relationship("Interview", back_populates="responses")
+
+class ProctorEvent(Base):
+    """Webcam proctoring event log — one row per warning / periodic heartbeat.
+
+    New table (auto-created via Base.metadata.create_all), so no migration
+    is needed for existing databases.
+    """
+    __tablename__ = "proctor_events"
+    id = Column(Integer, primary_key=True, index=True)
+    interview_id = Column(Integer, ForeignKey("interviews.id"), index=True)
+    event_type = Column(String, index=True)  # focused | distracted | no_face | multi_face | phone_detected | device_detected | tab_hidden | warning | heartbeat
+    detail = Column(Text, nullable=True)
+    focus_score = Column(Float, nullable=True)  # 0-100 snapshot at event time
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    interview = relationship("Interview", back_populates="proctor_events")
+
+
+# Attach reverse relationship to Interview (defined after ProctorEvent so the
+# class exists at import time).
+Interview.proctor_events = relationship(
+    "ProctorEvent", back_populates="interview", cascade="all, delete-orphan"
+)
+
 
 class Evaluation(Base):
     __tablename__ = "evaluations"
@@ -65,5 +97,12 @@ class Evaluation(Base):
     strengths = Column(JSON)
     weaknesses = Column(JSON)
     summary = Column(Text)
+    # Behavioral aggregate fields
+    behavioral_summary = Column(JSON, nullable=True)  # aggregated behavioral scores
+    avg_filler_rate = Column(Float, nullable=True)
+    avg_wpm = Column(Float, nullable=True)
+    avg_clarity = Column(Float, nullable=True)
+    avg_confidence = Column(Float, nullable=True)
+    avg_star = Column(Float, nullable=True)
     
     interview = relationship("Interview", back_populates="evaluation")

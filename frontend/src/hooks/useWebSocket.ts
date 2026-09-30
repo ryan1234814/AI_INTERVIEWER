@@ -4,8 +4,12 @@ interface Message {
   transcript?: string;
   next_question?: string;
   evaluation?: any;
+  behavioral?: any;
   error?: string;
   status?: string;
+  type?: string;
+  event_type?: string;
+  is_warning?: boolean;
 }
 
 export const useWebSocket = (interviewId: string) => {
@@ -24,12 +28,27 @@ export const useWebSocket = (interviewId: string) => {
         return;
       }
 
-      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const host = window.location.host;
-      // If running locally, bypass Vite proxy and connect directly to port 8000
-      const wsUrl = host.includes('localhost') || host.includes('127.0.0.1')
-        ? `${protocol}//localhost:8000/ws/interview/${interviewId}`
-        : `${protocol}//${host}/ws/interview/${interviewId}`;
+      // Determine the backend origin for the WebSocket.
+      // Priority: explicit VITE_WS_URL > VITE_API_URL > local dev (:8000) > same host.
+      // Vercel cannot proxy WebSockets, so prod must connect directly to Render.
+      const envWs = import.meta.env.VITE_WS_URL;
+      const envApi = import.meta.env.VITE_API_URL;
+      const isLocal =
+        window.location.host.includes('localhost') || window.location.host.includes('127.0.0.1');
+
+      let wsBase: string;
+      if (envWs) {
+        wsBase = envWs.replace(/\/$/, '').replace(/^http/, 'ws');
+      } else if (envApi) {
+        wsBase = envApi.replace(/\/$/, '').replace(/^http/, 'ws');
+      } else if (isLocal) {
+        wsBase = 'ws://localhost:8000';
+      } else {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        wsBase = `${protocol}//${window.location.host}`;
+      }
+
+      const wsUrl = `${wsBase}/ws/interview/${interviewId}`;
       const socket = new WebSocket(wsUrl);
 
       socket.onopen = () => {
