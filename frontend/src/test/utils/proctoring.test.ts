@@ -16,6 +16,10 @@ import {
   isWarningStatus,
   shouldTriggerWarning,
   warningMessageFor,
+  MAX_WARNINGS,
+  shouldTerminateSession,
+  warningsRemaining,
+  terminationReason,
 } from '../../utils/proctoring';
 
 describe('computeFocusPct', () => {
@@ -129,5 +133,18 @@ describe('warningMessageFor', () => {
 
   it('returns empty text for focused status', () => {
     expect(warningMessageFor('focused')).toBe('');
+  });
+});
+
+describe('termination policy', () => {
+  it('allows 6 warnings without termination', () => {
+    expect(MAX_WARNINGS).toBe(6);
+    expect(shouldTerminateSession(6)).toBe(false);
+    expect(warningsRemaining(6)).toBe(0);
+  });
+
+  it('terminates after more than 6 warnings', () => {
+    expect(shouldTerminateSession(7)).toBe(true);
+    expect(terminationReason(7)).toMatch(/terminat/i);
   });
 });

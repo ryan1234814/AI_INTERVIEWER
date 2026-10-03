@@ -10,7 +10,7 @@ class ConsistencyCheckingAgent:
     Agent meant to track contradictions or inconsistencies across a candidate's answers.
     """
     def __init__(self, groq_api_key: str = settings.GROQ_API_KEY):
-        self.llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile", temperature=0.1)
+        self.llm = ChatGroq(api_key=groq_api_key, model=settings.GROQ_FAST_MODEL, temperature=0.1)
         self.system_prompt = """You are the Consistency Checking Agent. Your role is to ensure the logical
 coherence and consistency of the interviewee's responses throughout the
 entire interview. You must track and compare answers, identifying any

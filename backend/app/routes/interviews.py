@@ -7,6 +7,8 @@ from app.database.session import get_db
 from app.database import models, crud
 from app.config import settings
 from app.utils.pdf_generator import generate_interview_pdf
+from app.utils.deps import assert_owner, get_current_user, resolve_principal
+from app.services import question_flow
 from typing import Optional
 import json
 
@@ -14,13 +16,18 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 @router.get("/{interview_id}/report")
-async def get_interview_report(interview_id: int, db: Session = Depends(get_db)):
+async def get_interview_report(
+    interview_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user),
+):
     """
     Download the interview performance report as a PDF.
     """
     interview = crud.get_interview(db, interview_id)
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")
+    assert_owner(interview.user_id, current_user)
     
     if interview.status != "completed":
         raise HTTPException(status_code=400, detail="Interview is not completed yet")
@@ -66,8 +73,17 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
 @router.get("/")
-async def list_interviews(db: Session = Depends(get_db)):
-    interviews = db.query(models.Interview).order_by(models.Interview.started_at.desc()).all()
+async def list_interviews(
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user),
+):
+    query = db.query(models.Interview)
+    principal = resolve_principal(current_user)
+    if principal is not None:
+        # Per-user dashboard: only interviews this account created. Rows predating
+        # authentication (user_id IS NULL) match no account and stay private.
+        query = query.filter(models.Interview.user_id == principal.id)
+    interviews = query.order_by(models.Interview.started_at.desc()).all()
     results = []
     for interview in interviews:
         job = db.query(models.JobDescription).filter(models.JobDescription.id == interview.job_id).first()
@@ -85,10 +101,15 @@ async def list_interviews(db: Session = Depends(get_db)):
 
 
 @router.get("/{interview_id}")
-async def get_interview(interview_id: int, db: Session = Depends(get_db)):
+async def get_interview(
+    interview_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user),
+):
     interview = crud.get_interview(db, interview_id)
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")
+    assert_owner(interview.user_id, current_user)
 
     job = db.query(models.JobDescription).filter(models.JobDescription.id == interview.job_id).first()
     candidate = db.query(models.Candidate).filter(models.Candidate.id == interview.candidate_id).first()
@@ -114,6 +135,7 @@ async def get_interview(interview_id: int, db: Session = Depends(get_db)):
         "status": interview.status,
         "total_questions": interview.total_questions,
         "current_question_index": interview.current_question_index,
+        "planned_questions": question_flow.parse_planned(interview.planned_questions),
         "job": {
             "id": job.id,
             "title": job.title,
@@ -175,6 +197,7 @@ async def setup_interview(
     num_questions: int = Form(5),
     goal: str = Form("Standard Technical Interview"),
     db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_user),
 ):
     """
     Full interview setup endpoint:
@@ -238,8 +261,8 @@ async def setup_interview(
         full_description = f"Role: {role}\nExperience Level: {experience_level}\n\n{job_description}"
         requirements = [r.strip() for r in job_description.split(".") if len(r.strip()) > 10]
 
-        # Create DB records
-        db_job = crud.create_job_description(db, title=job_title, description=full_description, requirements=requirements)
+        # Create DB records — all owned by the signed-in user.
+        db_job = crud.create_job_description(db, title=job_title, description=full_description, requirements=requirements, user_id=current_user.id)
         db_candidate = crud.create_candidate(
             db,
             name=candidate_name,
@@ -247,18 +270,41 @@ async def setup_interview(
             resume_path=resume_path,
             extracted_skills=extracted_skills,
             experience_summary=experience_summary,
+            user_id=current_user.id,
         )
-        db_interview = crud.create_interview(db, job_id=db_job.id, candidate_id=db_candidate.id, total_questions=num_questions, goal=goal)
 
-        # Generate initial questions
-        questions = []
+        # Generate the question bank BEFORE creating the interview so it can be
+        # persisted: the flow needs a stored list of distinct questions to advance
+        # through (and to resume from after a reconnect).
         try:
             from app.agents.question_generator import QuestionGeneratorAgent
             generator = QuestionGeneratorAgent(settings.GROQ_API_KEY)
             questions = generator.generate_questions(full_description, extracted_skills, count=num_questions)
         except Exception as e:
             logger.warning(f"AI question generation failed (using fallback): {e}")
-            questions = _generate_fallback_questions(job_title, extracted_skills, experience_level, num_questions)
+            questions = []
+
+        questions = [q.strip() for q in questions if q and q.strip()][:num_questions]
+        # Top the bank up to the requested length so every turn has somewhere to go.
+        if len(questions) < num_questions:
+            filler = _generate_fallback_questions(job_title, extracted_skills, experience_level, num_questions * 2)
+            for fq in filler:
+                if len(questions) >= num_questions:
+                    break
+                if not any(question_flow.is_repeat(fq, existing) for existing in questions):
+                    questions.append(fq)
+        if not questions:
+            raise HTTPException(status_code=500, detail="Unable to generate interview questions")
+
+        db_interview = crud.create_interview(
+            db,
+            job_id=db_job.id,
+            candidate_id=db_candidate.id,
+            total_questions=len(questions),
+            goal=goal,
+            planned_questions=questions,
+            user_id=current_user.id,
+        )
 
         # Store the first question as an InterviewResponse placeholder
         if questions:
@@ -292,6 +338,7 @@ async def submit_response(
     question_text: str = Form(...),
     candidate_response: str = Form(...),
     db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user),
 ):
     """
     Submit a text-based response for the current question.
@@ -300,9 +347,41 @@ async def submit_response(
     interview = crud.get_interview(db, interview_id)
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")
+    assert_owner(interview.user_id, current_user)
+
+    if interview.status == "terminated":
+        raise HTTPException(
+            status_code=410,
+            detail="Interview was terminated automatically after repeated proctoring warnings.",
+        )
+
+    # Repeat request (text mode): echo the same question, no scoring, no progress.
+    if question_flow.is_repeat_request(candidate_response):
+        logger.info(f"Repeat request on interview {interview_id} — echoing question")
+        return {
+            "response_id": 0,
+            "evaluation": {"feedback": "Question repeated on request (not scored).", "is_repeat": True},
+            "behavioral": None,
+            "next_question": question_text,
+            "is_repeat": True,
+            "current_index": interview.current_question_index,
+            "total_questions": interview.total_questions,
+            "status": interview.status,
+        }
 
     job = db.query(models.JobDescription).filter(models.JobDescription.id == interview.job_id).first()
     candidate = db.query(models.Candidate).filter(models.Candidate.id == interview.candidate_id).first()
+
+    # Read the history BEFORE building the new response row: SQLAlchemy autoflush
+    # would otherwise include the row being inserted and make every question look
+    # like it had already been probed.
+    prior_question_texts = [
+        r.question_text
+        for r in db.query(models.InterviewResponse).filter(
+            models.InterviewResponse.interview_id == interview_id,
+            models.InterviewResponse.candidate_response != "",
+        ).all()
+    ]
 
     # Behavioral analysis for text-mode responses
     behavioral = None
@@ -339,7 +418,9 @@ async def submit_response(
         )
         evaluation = eval_result
         response_record.feedback = json.dumps(eval_result)
-        response_record.evaluation_score = 7.0  # Default if parsing fails
+        response_record.evaluation_score = float(
+            eval_result.get("technical_accuracy", 7.0) or 7.0
+        )
     except Exception as e:
         logger.warning(f"AI evaluation failed: {e}")
         evaluation = {
@@ -348,11 +429,41 @@ async def submit_response(
         response_record.feedback = "Evaluation pending"
 
     # Update interview progress
-    interview.current_question_index += 1
-    if interview.current_question_index >= interview.total_questions:
-        interview.status = "completed"
+    planned = question_flow.parse_planned(interview.planned_questions)
+    answered_index = interview.current_question_index
+    next_index = answered_index + 1
+
+    completeness = 10
+    if isinstance(evaluation, dict):
+        try:
+            completeness = float(evaluation.get("completeness", 10))
+        except (TypeError, ValueError):
+            completeness = 10
+
+    # Insert at most ONE probing follow-up per planned question. Bounded this way,
+    # a thin answer (or a validator running on its offline fallback) can never
+    # re-ask the same question turn after turn.
+    asked_planned = question_flow.planned_question(planned, answered_index)
+    answered_base_question = bool(asked_planned) and question_flow.is_repeat(
+        question_text, asked_planned
+    )
+    already_probed = any(
+        question_flow.is_repeat(asked, question_text) for asked in prior_question_texts
+    )
+    wants_follow_up = (
+        answered_base_question
+        and not already_probed
+        and completeness < 7
+        and next_index < interview.total_questions
+    )
+
+    if wants_follow_up:
+        interview.status = "ongoing"  # index holds until the probe is answered
     else:
-        interview.status = "ongoing"
+        interview.current_question_index = next_index
+        interview.status = (
+            "completed" if next_index >= interview.total_questions else "ongoing"
+        )
 
     db.commit()
     db.refresh(response_record)
@@ -360,19 +471,37 @@ async def submit_response(
     # Generate next question if not done
     next_question = ""
     if interview.status != "completed":
-        try:
-            from app.agents.question_generator import QuestionGeneratorAgent
-            generator = QuestionGeneratorAgent(settings.GROQ_API_KEY)
-            next_question = generator.generate_followup(candidate_response, question_text)
-        except Exception as e:
-            logger.warning(f"Follow-up generation failed: {e}")
-            next_question = _get_fallback_followup(interview.current_question_index)
+        if wants_follow_up:
+            try:
+                from app.agents.question_generator import QuestionGeneratorAgent
+                generator = QuestionGeneratorAgent(settings.GROQ_API_KEY)
+                next_question = generator.generate_followup(candidate_response, question_text)
+            except Exception as e:
+                logger.warning(f"Follow-up generation failed: {e}")
+                next_question = question_flow.rotating_probe(answered_index)
+        else:
+            # Advance to the next planned question; only synthesize one when the
+            # bank is exhausted (e.g. interviews created without a stored bank).
+            next_question = question_flow.planned_question(planned, next_index)
+            if not next_question:
+                try:
+                    from app.agents.question_generator import QuestionGeneratorAgent
+                    generator = QuestionGeneratorAgent(settings.GROQ_API_KEY)
+                    next_question = generator.generate_followup(candidate_response, question_text)
+                except Exception as e:
+                    logger.warning(f"Next question generation failed: {e}")
+                    next_question = question_flow.rotating_probe(next_index)
+
+        # Never hand back the question that was just answered.
+        if question_flow.is_repeat(next_question, question_text):
+            next_question = question_flow.rotating_probe(next_index)
 
     return {
         "response_id": response_record.id,
         "evaluation": evaluation,
         "behavioral": behavioral,
         "next_question": next_question,
+        "is_repeat": False,
         "current_index": interview.current_question_index,
         "total_questions": interview.total_questions,
         "status": interview.status,
@@ -380,10 +509,15 @@ async def submit_response(
 
 
 @router.post("/{interview_id}/complete")
-async def complete_interview(interview_id: int, db: Session = Depends(get_db)):
+async def complete_interview(
+    interview_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user),
+):
     interview = crud.get_interview(db, interview_id)
     if not interview:
         raise HTTPException(status_code=404, detail="Interview not found")
+    assert_owner(interview.user_id, current_user)
 
     # Check if already completed with an evaluation
     existing_eval = db.query(models.Evaluation).filter(
@@ -589,11 +723,8 @@ def _generate_fallback_questions(job_title, skills, experience_level, count):
 
 
 def _get_fallback_followup(index):
-    followups = [
-        "Can you elaborate on the technologies you used in that project?",
-        "What was the biggest challenge you faced, and how did you overcome it?",
-        "How did you measure the success of that approach?",
-        "What would you do differently if you could redo that project?",
-        "Tell me about a time when that approach didn't work out as planned.",
-    ]
-    return followups[index % len(followups)]
+    """Rotating probe used when no LLM is available.
+
+    Delegates to the shared question bank so voice and text paths stay in step.
+    """
+    return question_flow.rotating_probe(index)

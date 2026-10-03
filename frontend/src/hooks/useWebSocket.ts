@@ -10,6 +10,12 @@ interface Message {
   type?: string;
   event_type?: string;
   is_warning?: boolean;
+  is_repeat?: boolean;
+  reason?: string;
+  warnings?: number;
+  // Backend progress: index of the planned question just answered.
+  current_index?: number;
+  total_questions?: number;
 }
 
 export const useWebSocket = (interviewId: string) => {

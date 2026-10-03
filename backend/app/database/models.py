@@ -1,44 +1,82 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Float, JSON
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, Float, JSON, Index
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.base import Base
 
+class User(Base):
+    """Owner of every interview, job and candidate created through the app.
+
+    Rows predating authentication keep user_id = NULL and are deliberately not
+    visible from any account (queries filter on user_id == current_user.id).
+    """
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String)
+    email = Column(String, unique=True, index=True, nullable=False)
+    hashed_password = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    interviews = relationship("Interview", back_populates="user")
+    job_descriptions = relationship("JobDescription", back_populates="user")
+    candidates = relationship("Candidate", back_populates="user")
+
 class JobDescription(Base):
     __tablename__ = "job_descriptions"
     id = Column(Integer, primary_key=True, index=True)
+    # Nullable for migration safety: existing rows predate multi-user support.
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     title = Column(String, index=True)
     description = Column(Text)
     requirements = Column(JSON)  # List of requirements
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
+    user = relationship("User", back_populates="job_descriptions")
     interviews = relationship("Interview", back_populates="job")
 
 class Candidate(Base):
     __tablename__ = "candidates"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     name = Column(String, index=True)
-    email = Column(String, unique=True, index=True)
+    # Uniqueness is per owner (a hiring tool legitimately reuses the same candidate
+    # email across accounts), so the global unique index is replaced by the
+    # composite unique index declared below.
+    email = Column(String)
     resume_path = Column(String)
     extracted_skills = Column(JSON)
     experience_summary = Column(Text)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
+    user = relationship("User", back_populates="candidates")
     interviews = relationship("Interview", back_populates="candidate")
+
+Index(
+    "ix_candidates_email_user_id",
+    Candidate.email,
+    Candidate.user_id,
+    unique=True,
+)
 
 class Interview(Base):
     __tablename__ = "interviews"
     id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     job_id = Column(Integer, ForeignKey("job_descriptions.id"))
     candidate_id = Column(Integer, ForeignKey("candidates.id"))
     status = Column(String, default="pending")  # pending, ongoing, completed
     goal = Column(String, default="Standard Technical Interview")
     current_question_index = Column(Integer, default=0)
     total_questions = Column(Integer, default=5)
+    # Question bank produced at setup. Persisted so the flow can always advance
+    # to a distinct next question (and resume there after a reconnect) instead of
+    # falling back to re-asking the current one.
+    planned_questions = Column(JSON, nullable=True)
     started_at = Column(DateTime(timezone=True), server_default=func.now())
     completed_at = Column(DateTime(timezone=True), nullable=True)
     
     job = relationship("JobDescription", back_populates="interviews")
     candidate = relationship("Candidate", back_populates="interviews")
+    user = relationship("User", back_populates="interviews")
     responses = relationship("InterviewResponse", back_populates="interview")
     evaluation = relationship("Evaluation", back_populates="interview", uselist=False)
 

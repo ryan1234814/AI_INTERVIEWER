@@ -9,7 +9,7 @@ class AnswerValidationAgent:
     Agent responsible for checking the factual and technical correctness of the user's answer.
     """
     def __init__(self, groq_api_key: str = settings.GROQ_API_KEY):
-        self.llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile", temperature=0.1)
+        self.llm = ChatGroq(api_key=groq_api_key, model=settings.GROQ_MODEL, temperature=0.1)
         self.system_prompt = """You are the Answer Validation Agent. Your role is to rigorously check the
 factual and technical correctness of the interviewee's response. You must
 use available tools and knowledge to validate the answer against expected
@@ -48,10 +48,12 @@ Format your output as JSON."""
             return result
         except Exception as e:
             logger.error(f"AnswerValidationAgent error: {e}")
+            # A scoring failure must NOT pin the interview to the current question:
+            # completeness stays above the follow-up threshold so the flow advances.
             return {
                 "relevance_score": 5,
                 "technical_accuracy": 5,
-                "completeness": 5,  # Default to middle value to allow progression
+                "completeness": 8,
                 "strengths": [],
                 "inaccuracies": [],
                 "feedback": "Answer received. Let's move on."

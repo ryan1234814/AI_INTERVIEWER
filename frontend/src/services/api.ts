@@ -10,6 +10,111 @@ const api = axios.create({
   baseURL: API_BASE,
 });
 
+// ─── Auth plumbing ───────────────────────────────────────────────────────────
+// The JWT lives in localStorage under "token" so it survives reloads; every
+// request attaches it, and a 401 anywhere means the session is gone.
+export const TOKEN_STORAGE_KEY = 'token';
+
+// Dispatched when the API rejects our token. AuthContext listens and sends the
+// user to /login through the router — a client-side redirect, rather than a
+// full page reload, so an expired token during a live interview cannot wipe the
+// in-progress UI as well as it lands.
+export const UNAUTHORIZED_EVENT = 'auth:unauthorized';
+
+export const getToken = (): string | null => localStorage.getItem(TOKEN_STORAGE_KEY);
+
+export const setToken = (token: string): void => {
+  localStorage.setItem(TOKEN_STORAGE_KEY, token);
+};
+
+export const clearToken = (): void => {
+  localStorage.removeItem(TOKEN_STORAGE_KEY);
+};
+
+// Routes that legitimately answer 401 (a wrong password is a form error, not a
+// session expiry), plus /auth/me, which the session-restore probe handles itself
+export const isAuthEndpoint = (url: string): boolean => url.includes('/auth/');
+
+api.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      const url = error.config?.url ?? '';
+      if (!isAuthEndpoint(url)) {
+        clearToken();
+        window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
+      }
+    }
+    return Promise.reject(error);
+  }
+);
+
+/** Backend `detail` (string) or FastAPI validation list -> a readable message. */
+export const getApiError = (error: unknown, fallback = 'Something went wrong'): string => {
+  if (!axios.isAxiosError(error)) return fallback;
+
+  const detail = error.response?.data?.detail;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail) && detail.length > 0) {
+    const first = detail[0];
+    const msg = typeof first?.msg === 'string' ? first.msg : fallback;
+    const loc = Array.isArray(first?.loc) ? first.loc.filter((p: unknown) => p !== 'body') : [];
+    return loc.length ? `${loc.join('.')}: ${msg}` : msg;
+  }
+  if (error.code === 'ERR_NETWORK') return 'Cannot reach the server. Please try again.';
+  return fallback;
+};
+
+export interface AuthUser {
+  id: number;
+  name: string;
+  email: string;
+  created_at: string | null;
+}
+
+export interface AuthResponse {
+  access_token: string;
+  token_type: string;
+  user: AuthUser;
+}
+
+export const signup = async (
+  name: string,
+  email: string,
+  password: string
+): Promise<AuthResponse> => {
+  const response = await api.post('/auth/signup', { name, email, password });
+  setToken(response.data.access_token);
+  return response.data;
+};
+
+export const login = async (email: string, password: string): Promise<AuthResponse> => {
+  const response = await api.post('/auth/login', { email, password });
+  setToken(response.data.access_token);
+  return response.data;
+};
+
+export const getMe = async (): Promise<AuthUser> => {
+  const response = await api.get('/auth/me');
+  return response.data;
+};
+
+/**
+ * Local sign-out: the API is stateless (no server-side session to revoke), so
+ * dropping the token is the logout. Kept async-free for the same reason.
+ */
+export const logout = (): void => {
+  clearToken();
+};
+
 export interface SetupInterviewResponse {
   interview_id: number;
   job_id: number;
@@ -28,6 +133,7 @@ export interface SubmitResponseResult {
   current_index: number;
   total_questions: number;
   status: string;
+  is_repeat?: boolean;
 }
 
 export interface InterviewDetail {
@@ -160,15 +266,31 @@ export interface ProctorEventPayload {
   focus_score?: number;
 }
 
+export interface ProctorEventResult {
+  id: number;
+  event_type: string;
+  is_warning: boolean;
+  warnings: number;
+  warnings_remaining: number;
+  terminated: boolean;
+  reason: string | null;
+}
+
 export const reportProctorEvent = async (
   interviewId: number,
   payload: ProctorEventPayload,
-): Promise<void> => {
+): Promise<ProctorEventResult | null> => {
   try {
-    await api.post(`/interviews/${interviewId}/proctor-event`, payload);
-  } catch (error) {
+    const res = await api.post(`/interviews/${interviewId}/proctor-event`, payload);
+    return res.data as ProctorEventResult;
+  } catch (error: any) {
+    // 410 = interview already terminated — surface it so the UI can close.
+    if (error?.response?.status === 410) {
+      return { id: 0, event_type: payload.event_type, is_warning: true, warnings: 7, warnings_remaining: 0, terminated: true, reason: error?.response?.data?.detail || 'Interview terminated after repeated proctoring warnings.' };
+    }
     // Proctor logging is best-effort — never break the interview over it.
     console.warn('Failed to log proctor event:', error);
+    return null;
   }
 };
 

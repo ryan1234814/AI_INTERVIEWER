@@ -33,6 +33,11 @@ python-multipart
 # Security
 python-jose[cryptography]
 passlib[bcrypt]
+# Pinned: passlib 1.7.4's bcrypt backend detection hashes a >72-byte secret,
+# which bcrypt >= 4.1 rejects outright, so CryptContext(schemes=["bcrypt"]).hash()
+# raises ValueError. 4.0.1 is the last release passlib works with and still
+# satisfies chromadb's bcrypt>=4.0.1 floor.
+bcrypt==4.0.1
 
 # Document Parsing
 PyPDF2

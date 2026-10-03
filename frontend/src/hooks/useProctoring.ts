@@ -5,6 +5,9 @@ import {
   isWarningStatus,
   shouldTriggerWarning,
   warningMessageFor,
+  MAX_WARNINGS,
+  shouldTerminateSession,
+  terminationReason,
   type ProctorStatus,
 } from '../utils/proctoring';
 import { reportProctorEvent } from '../services/api';
@@ -13,12 +16,16 @@ export interface ProctorSnapshot {
   status: ProctorStatus;
   focusPct: number;
   warnings: number;
+  warningsRemaining: number;
+  maxWarnings: number;
   banner: string | null;
   deviceLabel: string | null;
   faceCount: number;
   mode: 'ai' | 'face' | 'basic';
   cameraOn: boolean;
   cameraError: string | null;
+  terminated: boolean;
+  terminationReason: string | null;
 }
 
 interface CocoPrediction {
@@ -82,9 +89,11 @@ interface Options {
   checkIntervalMs?: number;
   /** Warn only after N consecutive bad frames (or cooldown expiry). */
   persistenceNeeded?: number;
+  /** Called once when warnings exceed the limit and the session must close. */
+  onTerminated?: (reason: string) => void;
 }
 
-export function useProctoring({ interviewId, enabled = true, checkIntervalMs = 1500, persistenceNeeded = 2 }: Options) {
+export function useProctoring({ interviewId, enabled = true, checkIntervalMs = 1500, persistenceNeeded = 2, onTerminated }: Options) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const faceDetectorRef = useRef<{ detect: (v: HTMLVideoElement) => Promise<Array<{ boundingBox?: DOMRectReadOnly }>> } | null>(null);
@@ -101,14 +110,21 @@ export function useProctoring({ interviewId, enabled = true, checkIntervalMs = 1
     status: 'unknown',
     focusPct: 100,
     warnings: 0,
+    warningsRemaining: MAX_WARNINGS,
+    maxWarnings: MAX_WARNINGS,
     banner: null,
     deviceLabel: null,
     faceCount: 0,
     mode: 'basic',
     cameraOn: false,
     cameraError: null,
+    terminated: false,
+    terminationReason: null,
   });
   const warningsRef = useRef(0);
+  const terminatedRef = useRef(false);
+  const onTerminatedRef = useRef(onTerminated);
+  onTerminatedRef.current = onTerminated;
 
   const stopCamera = useCallback(() => {
     if (streamRef.current) {
@@ -147,13 +163,35 @@ export function useProctoring({ interviewId, enabled = true, checkIntervalMs = 1
   }, [enabled]);
 
   // Fire-and-forget backend logging (never throws, never blocks the loop).
-  const logEvent = useCallback((eventType: string, detail: string | null, focusPct: number) => {
-    if (!interviewId) return;
-    void reportProctorEvent(Number(interviewId), {
-      event_type: eventType,
-      detail: detail || undefined,
-      focus_score: focusPct,
-    }).catch(() => undefined);
+  // Returns the backend verdict so callers can react to auto-termination.
+  const logEvent = useCallback(async (eventType: string, detail: string | null, focusPct: number) => {
+    if (!interviewId) return null;
+    try {
+      const res = await reportProctorEvent(Number(interviewId), {
+        event_type: eventType,
+        detail: detail || undefined,
+        focus_score: focusPct,
+      });
+      if (res?.terminated && !terminatedRef.current) {
+        terminatedRef.current = true;
+        const reason = res.reason || terminationReason(res.warnings);
+        setSnapshot((s) => ({ ...s, terminated: true, terminationReason: reason, banner: reason }));
+        try { onTerminatedRef.current?.(reason); } catch { /* noop */ }
+      } else if (res && typeof res.warnings === 'number') {
+        // Trust the backend as source of truth for the count.
+        warningsRef.current = Math.max(warningsRef.current, res.warnings);
+        setSnapshot((s) => ({ ...s, warnings: warningsRef.current, warningsRemaining: Math.max(MAX_WARNINGS - warningsRef.current, 0) }));
+        if (shouldTerminateSession(res.warnings) && !terminatedRef.current) {
+          terminatedRef.current = true;
+          const reason = res.reason || terminationReason(res.warnings);
+          setSnapshot((s) => ({ ...s, terminated: true, terminationReason: reason, banner: reason }));
+          try { onTerminatedRef.current?.(reason); } catch { /* noop */ }
+        }
+      }
+      return res;
+    } catch {
+      return null;
+    }
   }, [interviewId]);
 
   useEffect(() => {
@@ -240,13 +278,29 @@ export function useProctoring({ interviewId, enabled = true, checkIntervalMs = 1
       const fire = shouldTriggerWarning(status, consecutiveBad.current, msSinceLast, persistenceNeeded);
 
       let banner: string | null = null;
-      if (fire) {
+      if (fire && !terminatedRef.current) {
         lastWarningAt.current = now;
         warningsRef.current += 1;
-        banner = warningMessageFor(status, deviceLabel || undefined);
+        const count = warningsRef.current;
+        if (shouldTerminateSession(count)) {
+          terminatedRef.current = true;
+          const reason = terminationReason(count);
+          banner = reason;
+          playWarningBeep();
+          const detail = deviceLabel ? `${status} (${deviceLabel})` : status;
+          void logEvent(isWarningStatus(status) ? status : 'warning', detail, focusPct);
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach((t) => { try { t.stop(); } catch { /* noop */ } });
+            streamRef.current = null;
+          }
+          setSnapshot((s) => ({ ...s, status, focusPct, warnings: count, warningsRemaining: 0, maxWarnings: MAX_WARNINGS, faceCount: personCount, deviceLabel, banner, terminated: true, terminationReason: reason, cameraOn: false }));
+          try { onTerminatedRef.current?.(reason); } catch { /* noop */ }
+          return;
+        }
+        banner = `${warningMessageFor(status, deviceLabel || undefined)} (Warning ${count}/${MAX_WARNINGS})`;
         playWarningBeep();
         const detail = deviceLabel ? `${status} (${deviceLabel})` : status;
-        logEvent(isWarningStatus(status) ? status : 'warning', detail, focusPct);
+        void logEvent(isWarningStatus(status) ? status : 'warning', detail, focusPct);
         // Auto-hide the banner after 6s so it does not block the interview.
         window.setTimeout(() => {
           if (mounted.current) setSnapshot((s) => (s.banner === banner ? { ...s, banner: null } : s));
@@ -254,7 +308,7 @@ export function useProctoring({ interviewId, enabled = true, checkIntervalMs = 1
       } else if (now - lastHeartbeatAt.current > 20000) {
         // Periodic heartbeat keeps a focus-% trail on the backend.
         lastHeartbeatAt.current = now;
-        logEvent(status, null, focusPct);
+        void logEvent(status, null, focusPct);
       }
 
       if (!mounted.current) return;
@@ -263,6 +317,8 @@ export function useProctoring({ interviewId, enabled = true, checkIntervalMs = 1
         status,
         focusPct,
         warnings: warningsRef.current,
+        warningsRemaining: Math.max(MAX_WARNINGS - warningsRef.current, 0),
+        maxWarnings: MAX_WARNINGS,
         faceCount: personCount,
         deviceLabel,
         ...(banner ? { banner } : {}),
@@ -272,18 +328,40 @@ export function useProctoring({ interviewId, enabled = true, checkIntervalMs = 1
     const timer = window.setInterval(() => { void analyse(); }, checkIntervalMs);
 
     const onVis = () => {
-      if (document.visibilityState === 'hidden') {
+      if (document.visibilityState === 'hidden' && !terminatedRef.current) {
         consecutiveBad.current += 1;
         const focusPct = computeFocusPct(focusedFrames.current, totalFrames.current);
-        logEvent('tab_hidden', 'candidate left the interview tab', focusPct);
+        void logEvent('tab_hidden', 'candidate left the interview tab', focusPct);
         warningsRef.current += 1;
+        const count = warningsRef.current;
+        if (shouldTerminateSession(count)) {
+          terminatedRef.current = true;
+          const reason = terminationReason(count);
+          playWarningBeep();
+          if (mounted.current) {
+            setSnapshot((s) => ({
+              ...s,
+              status: 'tab_hidden',
+              warnings: count,
+              warningsRemaining: 0,
+              maxWarnings: MAX_WARNINGS,
+              banner: reason,
+              terminated: true,
+              terminationReason: reason,
+            }));
+          }
+          try { onTerminatedRef.current?.(reason); } catch { /* noop */ }
+          return;
+        }
         playWarningBeep();
         if (mounted.current) {
           setSnapshot((s) => ({
             ...s,
             status: 'tab_hidden',
-            warnings: warningsRef.current,
-            banner: warningMessageFor('tab_hidden'),
+            warnings: count,
+            warningsRemaining: Math.max(MAX_WARNINGS - count, 0),
+            maxWarnings: MAX_WARNINGS,
+            banner: `${warningMessageFor('tab_hidden')} (Warning ${count}/${MAX_WARNINGS})`,
           }));
         }
       }

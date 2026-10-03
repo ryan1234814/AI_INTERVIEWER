@@ -10,7 +10,7 @@ class FollowUpQuestionAgent:
     based on the user’s previous answer.
     """
     def __init__(self, groq_api_key: str = settings.GROQ_API_KEY):
-        self.llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile", temperature=0.7)
+        self.llm = ChatGroq(api_key=groq_api_key, model=settings.GROQ_MODEL, temperature=0.7)
         self.system_prompt = """You are the Follow-up Question Agent. Your role is to generate insightful
 and probing follow-up questions. Based on the candidate's previous answer,
 identify gaps, ambiguities, or opportunities for deeper exploration. Craft
@@ -33,7 +33,9 @@ Keep the question concise and natural for a voice interview (max 2 sentences).""
             return response.content.strip()
         except Exception as e:
             logger.error(f"FollowUpQuestionAgent error: {e}")
-            return "Could you elaborate more on that project?"
+            # Generic probe — must not echo the original question, or the
+            # candidate hears the same question twice.
+            return "Could you give a specific example that best illustrates that?"
 
     def generate_simplified_reask_and_followup(self, original_question_text: str, candidate_answer: str, context: str) -> str:
         """
@@ -71,4 +73,6 @@ Your response (simplified re-ask + follow-up):"""
             return response.content.strip()
         except Exception as e:
             logger.error(f"FollowUpQuestionAgent simplified_reask error: {e}")
-            return f"Let me rephrase that — {original_question_text}"
+            # Never fall back to re-asking the original question verbatim — that is
+            # what caused the interview to loop on the same question forever.
+            return "Could you walk me through that in a bit more detail?"

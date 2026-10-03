@@ -131,3 +131,41 @@ async def test_report_missing_interview_404(db):
         await routes.report_proctor_event(
             9999, routes.ProctorEventIn(event_type="focused"), db)
     assert exc.value.status_code == 404
+
+
+def test_repeat_request_detection():
+    from app.services import question_flow as qf
+    assert qf.is_repeat_request("Can you repeat the question please?")
+    assert qf.is_repeat_request("please say that again")
+    assert qf.is_repeat_request("Pardon?")
+    assert not qf.is_repeat_request("My answer is Python and FastAPI")
+    assert not qf.is_repeat_request("")
+
+
+def test_termination_policy_threshold():
+    assert svc.MAX_WARNINGS == 6
+    assert svc.should_terminate(6) is False
+    assert svc.should_terminate(7) is True
+    assert "terminat" in svc.termination_reason(7).lower()
+
+
+@pytest.mark.asyncio
+async def test_seven_warnings_terminates_interview(db):
+    interview = make_interview(db)
+    last = None
+    for _ in range(6):
+        last = await routes.report_proctor_event(
+            interview.id,
+            routes.ProctorEventIn(event_type="phone_detected"),
+            db,
+        )
+        assert last["terminated"] is False
+    last = await routes.report_proctor_event(
+        interview.id,
+        routes.ProctorEventIn(event_type="multi_face"),
+        db,
+    )
+    assert last["terminated"] is True
+    assert last["reason"]
+    db.refresh(interview)
+    assert interview.status == "terminated"

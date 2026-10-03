@@ -93,7 +93,7 @@ class GroqSTT:
                 # Explicitly provide filename and mimetype to avoid 'invalid media' error
                 audio_file = ("audio.webm", io.BytesIO(audio_buffer), "audio/webm")
                 response = self.client.audio.transcriptions.create(
-                    model="whisper-large-v3",
+                    model=settings.GROQ_STT_MODEL,
                     file=audio_file,
                     response_format="text"
                 )

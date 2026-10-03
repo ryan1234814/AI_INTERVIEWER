@@ -9,7 +9,7 @@ class GoalAlignmentAgent:
     Agent that ensures the interview flow remains aligned with a predefined overarching goal.
     """
     def __init__(self, groq_api_key: str = settings.GROQ_API_KEY):
-        self.llm = ChatGroq(api_key=groq_api_key, model="llama-3.3-70b-versatile", temperature=0.3)
+        self.llm = ChatGroq(api_key=groq_api_key, model=settings.GROQ_MODEL, temperature=0.3)
         self.system_prompt = """You are the Goal Alignment Agent. Your paramount role is to ensure the
 entire interview process remains strictly aligned with the predefined
 overarching goal (e.g., "prepare for FAANG system design interview,"

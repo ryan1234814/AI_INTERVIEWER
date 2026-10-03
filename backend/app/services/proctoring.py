@@ -106,6 +106,46 @@ def is_prohibited_device(label: str) -> bool:
     return label.strip().lower() in DEVICE_LABELS
 
 
+# Policy: after this many integrity warnings the interview is auto-closed.
+MAX_WARNINGS = 6
+
+TERMINATION_REASON = (
+    "Interview terminated automatically: 6 proctoring warnings received "
+    "(unauthorised devices, multiple faces, or leaving the interview tab). "
+    "Please contact your recruiter to reschedule."
+)
+
+
+def count_warnings(events: List[Any]) -> int:
+    """Number of warning-type events in a list of rows/dicts."""
+    total = 0
+    for ev in events:
+        if isinstance(ev, dict):
+            et = str(ev.get("event_type") or "").lower()
+        else:
+            et = str(getattr(ev, "event_type", "") or "").lower()
+        if et in WARNING_TYPES:
+            total += 1
+    return total
+
+
+def should_terminate(warning_count: int, limit: int = MAX_WARNINGS) -> bool:
+    """True when warnings exceed the auto-close threshold (> limit)."""
+    try:
+        return int(warning_count) > int(limit)
+    except (TypeError, ValueError):
+        return False
+
+
+def termination_reason(warning_count: int, limit: int = MAX_WARNINGS) -> str:
+    return (
+        f"Interview terminated automatically: {warning_count} proctoring warnings "
+        f"received (limit is {limit} without termination; closed on warning "
+        f"{limit + 1}). Unauthorised devices, multiple faces, or leaving the "
+        f"interview tab trigger warnings. Please contact your recruiter to reschedule."
+    )
+
+
 def compute_focus_pct(focused_frames: int, total_frames: int) -> float:
     """Focus % = focused frames / total frames * 100 (0 when no frames)."""
     try:

@@ -83,8 +83,8 @@ class BehavioralAnalysisAgent:
         if self.groq_api_key:
             try:
                 from langchain_groq import ChatGroq
-                # try primary model, fallback to 8b if not available at runtime
-                self.llm = ChatGroq(api_key=self.groq_api_key, model="llama-3.1-8b-instant", temperature=0.2)
+                # Model name comes from config so a Groq retirement is a .env fix
+                self.llm = ChatGroq(api_key=self.groq_api_key, model=settings.GROQ_FAST_MODEL, temperature=0.2)
             except Exception as e:
                 logger.warning(f"Behavioral LLM init failed: {e}")
 

@@ -35,6 +35,27 @@ export const DEVICE_LABELS = new Set([
 
 export const PHONE_LABELS = new Set(['cell phone']);
 
+/** Policy: interview auto-closes after MORE than this many warnings (i.e. on 7th). */
+export const MAX_WARNINGS = 6;
+
+export function warningsRemaining(warnings: number, max = MAX_WARNINGS): number {
+  return Math.max(max - Math.max(0, Math.floor(Number(warnings) || 0)), 0);
+}
+
+/** True when the warning count exceeds the auto-close threshold. */
+export function shouldTerminateSession(warnings: number, max = MAX_WARNINGS): boolean {
+  const w = Math.floor(Number(warnings) || 0);
+  return w > max;
+}
+
+export function terminationReason(warnings: number, max = MAX_WARNINGS): string {
+  return (
+    `Interview terminated automatically: ${warnings} proctoring warnings received ` +
+    `(limit is ${max} without termination). Unauthorised devices, multiple faces, ` +
+    `or leaving the interview tab trigger warnings. Please contact your recruiter to reschedule.`
+  );
+}
+
 export const WARNING_MESSAGES: Record<string, string> = {
   distracted: 'You seem distracted. Please focus on the screen.',
   no_face: 'No face detected. Please sit in front of the camera.',

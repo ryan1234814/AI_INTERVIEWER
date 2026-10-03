@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Mic, BarChart3, Upload, ArrowRight, ChevronLeft,
@@ -7,6 +8,7 @@ import {
 import SetupInterview from '../components/Setup/SetupInterview';
 import InterviewSession from '../components/Interview/InterviewSession';
 import InterviewDashboard from '../components/Dashboard/InterviewDashboard';
+import { useAuth } from '../context/AuthContext';
 
 type AppState = 'landing' | 'setup' | 'interview' | 'dashboard';
 
@@ -19,9 +21,39 @@ const fade = {
 const Home: React.FC = () => {
   const [appState, setAppState] = useState<AppState>('landing');
   const [interviewData, setInterviewData] = useState<any>(null);
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const startSetup = () => setAppState('setup');
-  const viewDashboard = () => setAppState('dashboard');
+  // The setup and dashboard views talk to user-scoped endpoints, so anonymous
+  // visitors are sent to sign in instead of bouncing off a 401.
+  const openView = (view: AppState) => {
+    if (!isAuthenticated) {
+      navigate('/login');
+      return;
+    }
+    setAppState(view);
+  };
+
+  const startSetup = () => openView('setup');
+  const viewDashboard = () => openView('dashboard');
+
+  // Signing out mid-flow drops us back to the public overview rather than
+  // leaving a broken view up.
+  useEffect(() => {
+    if (!isAuthenticated && appState !== 'landing') setAppState('landing');
+  }, [isAuthenticated, appState]);
+
+  // Dashboard's "Start Interview" routes home with this flag to open setup.
+  useEffect(() => {
+    const state = location.state as { openSetup?: boolean } | null;
+    if (state?.openSetup) {
+      // Consume it so navigating back doesn't reopen the form.
+      window.history.replaceState({}, '');
+      openView('setup');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.state, isAuthenticated]);
 
   const handleSetupSuccess = (data: any) => {
     setInterviewData(data);

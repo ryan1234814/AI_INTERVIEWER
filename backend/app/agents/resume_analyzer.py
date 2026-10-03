@@ -6,6 +6,8 @@ from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 import pdfplumber
 
+from app.config import settings
+
 logger = logging.getLogger(__name__)
 
 class ResumeAnalysis(BaseModel):
@@ -19,7 +21,7 @@ class ResumeAnalyzerAgent:
     def __init__(self, groq_api_key: str):
         self.llm = ChatGroq(
             api_key=groq_api_key,
-            model="llama-3.3-70b-versatile",
+            model=settings.GROQ_MODEL,
             temperature=0.1
         )
         self.parser = PydanticOutputParser(pydantic_object=ResumeAnalysis)

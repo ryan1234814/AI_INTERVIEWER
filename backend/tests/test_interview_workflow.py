@@ -106,6 +106,7 @@ async def test_submit_response_evaluates_and_generates_followup(
         "How do you test APIs?",
         "I use pytest and integration tests.",
         db,
+        None,
     )
 
     saved = db.get(models.InterviewResponse, result["response_id"])
@@ -160,11 +161,11 @@ async def test_complete_interview_creates_evaluation_and_is_idempotent(db):
     )
     db.commit()
 
-    result = await interviews.complete_interview(interview.id, db)
+    result = await interviews.complete_interview(interview.id, db, None)
     evaluation = (
         db.query(models.Evaluation).filter_by(interview_id=interview.id).one()
     )
-    repeat_result = await interviews.complete_interview(interview.id, db)
+    repeat_result = await interviews.complete_interview(interview.id, db, None)
 
     assert result["status"] == "completed"
     assert result["overall_score"] == 7.0
@@ -183,7 +184,7 @@ async def test_complete_interview_creates_evaluation_and_is_idempotent(db):
 @pytest.mark.asyncio
 async def test_missing_interview_returns_not_found(db):
     with pytest.raises(HTTPException, match="Interview not found") as error:
-        await interviews.get_interview(999, db)
+        await interviews.get_interview(999, db, None)
 
     assert error.value.status_code == 404
 

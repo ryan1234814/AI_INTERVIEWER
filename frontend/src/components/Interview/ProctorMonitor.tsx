@@ -5,6 +5,7 @@ import { useProctoring } from '../../hooks/useProctoring';
 
 interface Props {
   interviewId: string;
+  onTerminated?: (reason: string) => void;
 }
 
 type Tone = 'success' | 'warning' | 'danger' | 'neutral';
@@ -34,8 +35,8 @@ function focusColor(pct: number): string {
   return '#ef4444';
 }
 
-const ProctorMonitor: React.FC<Props> = ({ interviewId }) => {
-  const { videoRef, snapshot, startCamera, stopCamera } = useProctoring({ interviewId });
+const ProctorMonitor: React.FC<Props> = ({ interviewId, onTerminated }) => {
+  const { videoRef, snapshot, startCamera, stopCamera } = useProctoring({ interviewId, onTerminated });
   const style = STATUS_STYLE[snapshot.status] || STATUS_STYLE.unknown;
   const tone = TONE[style.tone];
   const R = 26;
@@ -107,7 +108,7 @@ const ProctorMonitor: React.FC<Props> = ({ interviewId }) => {
               <AlertTriangle className="w-3 h-3" /> Warnings
             </div>
             <div className="text-sm font-semibold tabular-nums mt-0.5" style={{ color: snapshot.warnings > 0 ? 'var(--warning)' : 'var(--success)' }}>
-              {snapshot.warnings}
+              {snapshot.warnings}/{snapshot.maxWarnings}
             </div>
           </div>
           <div className="tile p-2 text-center">
@@ -120,6 +121,13 @@ const ProctorMonitor: React.FC<Props> = ({ interviewId }) => {
           </div>
         </div>
       </div>
+
+      {snapshot.terminated && snapshot.terminationReason && (
+        <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg text-xs font-semibold" style={{ background: 'var(--danger-subtle)', border: '1px solid var(--danger-border)', color: 'var(--danger)' }} role="alert">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <span>{snapshot.terminationReason}</span>
+        </div>
+      )}
 
       {snapshot.deviceLabel && (
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold" style={{ background: 'var(--danger-subtle)', border: '1px solid var(--danger-border)', color: 'var(--danger)' }}>

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, MicOff, Send, MessageSquare, ShieldCheck, AlertCircle, Loader2, Volume2, Download, Check, Bot, User } from 'lucide-react';
+import { Mic, MicOff, Send, MessageSquare, ShieldCheck, AlertCircle, Loader2, Volume2, Download, Check, Bot, User, Repeat, Ban } from 'lucide-react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useSpeechSynthesis } from '../../hooks/useSpeechSynthesis';
 import { getInterview, downloadReport } from '../../services/api';
@@ -13,16 +13,18 @@ interface Props {
 
 const InterviewSession: React.FC<Props> = ({ interviewId }) => {
   const { status, messages, sendText, sendAudio } = useWebSocket(interviewId);
-  const { speak, isSpeaking, isSupported } = useSpeechSynthesis();
+  const { speak, stop: cancel, isSpeaking, isSupported } = useSpeechSynthesis();
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isCompleted, setIsCompleted] = useState(false);
+  const [terminatedReason, setTerminatedReason] = useState<string | null>(null);
   const [interviewDetail, setInterviewDetail] = useState<any>(null);
   const [textMode, setTextMode] = useState(false);
   const [textInput, setTextInput] = useState('');
   const [isDownloading, setIsDownloading] = useState(false);
   const [interimText, setInterimText] = useState('');
   const isCompletedRef = useRef(false);
+  const terminatedRef = useRef(false);
 
   // Load interview details on mount
   useEffect(() => {
@@ -42,6 +44,9 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
   const isRecordingRef = useRef(false);
   const isStartingRef = useRef(false);
   const lastSpokenQuestionRef = useRef<string>('');
+  // Most recent question received from the backend. Used for display so the UI
+  // never falls back to question 1 while the interview is further along.
+  const lastQuestionRef = useRef<string>('');
 
   // MediaRecorder for reliable audio capture
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -73,12 +78,35 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
     }
   }, []);
 
+  const handleTerminated = useCallback((reason: string) => {
+    if (terminatedRef.current) return;
+    terminatedRef.current = true;
+    setTerminatedReason(reason);
+    setIsCompleted(true);
+    isCompletedRef.current = true;
+    setIsRecording(false);
+    isRecordingRef.current = false;
+    setIsProcessing(false);
+    clearAllTimers();
+    try { cancel?.(); } catch { /* noop */ }
+    if (recognitionRef.current) try { recognitionRef.current.stop(); } catch { /* ok */ }
+    if (mediaRecorderRef.current?.state !== 'inactive') try { mediaRecorderRef.current?.stop(); } catch { /* ok */ }
+    if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach((t) => t.stop()); mediaStreamRef.current = null; }
+  }, [cancel, clearAllTimers]);
+
   // Handle new messages from backend — clear processing and detect completion
   useEffect(() => {
     if (messages.length > 0) {
-      const latest = messages[messages.length - 1];
+      const latest: any = messages[messages.length - 1];
       if (latest.next_question || latest.error) {
         setIsProcessing(false);
+      }
+      // Proctor auto-close from the backend.
+      if (latest.type === 'proctor_terminate' || latest.status === 'terminated') {
+        const reason = latest.reason || latest.next_question || 'Interview terminated after repeated proctoring warnings.';
+        console.log('[SESSION] Interview terminated by proctoring');
+        handleTerminated(reason);
+        return;
       }
       // Detect interview completion
       if (latest.status === 'completed') {
@@ -95,7 +123,7 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
         if (mediaStreamRef.current) { mediaStreamRef.current.getTracks().forEach(t => t.stop()); mediaStreamRef.current = null; }
       }
     }
-  }, [messages, clearAllTimers]);
+  }, [messages, clearAllTimers, handleTerminated]);
 
   // --- Finalize: stop recording, send audio/text to backend ---
   const finalizeAndSend = useCallback(() => {
@@ -353,9 +381,19 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
     }
 
     const question = latestMessage.next_question;
+    const isRepeatEcho = Boolean((latestMessage as any).is_repeat);
+    lastQuestionRef.current = question;
 
-    // Prevent speaking the same question twice
-    if (question === lastSpokenQuestionRef.current) return;
+    // Prevent speaking the same question twice — EXCEPT when the backend
+    // explicitly echoed it because the candidate asked for a repeat.
+    const normalize = (t: string) => t.toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+    if (!isRepeatEcho && normalize(question) === normalize(lastSpokenQuestionRef.current)) {
+      console.warn('[TTS] Duplicate question received — skipping replay');
+      if (!textMode && !isRecordingRef.current && !isStartingRef.current) {
+        setTimeout(() => startRecording(), 400);
+      }
+      return;
+    }
     lastSpokenQuestionRef.current = question;
 
     console.log(`[TTS] Speaking: ${question.substring(0, 50)}...`);
@@ -401,14 +439,32 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
   }, [messages, speak, isSupported, textMode, startRecording, clearAllTimers]);
 
   const latestMsg = messages[messages.length - 1];
-  // Show completion message if completed, otherwise show current question
+  // Show completion message if completed, otherwise the current question.
+  // Resolution order deliberately avoids the first stored response: falling back
+  // to it made the screen look stuck on question 1.
+  const plannedAtProgress = Array.isArray(interviewDetail?.planned_questions)
+    ? interviewDetail.planned_questions[
+        Math.min(
+          latestMsg?.current_index ?? interviewDetail?.current_question_index ?? 0,
+          interviewDetail.planned_questions.length - 1
+        )
+      ]
+    : null;
   const currentQuestion = isCompleted
     ? "Thank you for completing the interview! You can download your report below."
-    : (latestMsg?.next_question || interviewDetail?.responses?.[0]?.question_text || "Please introduce yourself and tell me about your background.");
+    : (latestMsg?.next_question
+      || lastQuestionRef.current
+      || plannedAtProgress
+      || interviewDetail?.responses?.[0]?.question_text
+      || "Please introduce yourself and tell me about your background.");
 
   // Calculate progress
   const totalQuestions = interviewDetail?.total_questions || parseInt(interviewDetail?.num_questions) || 5;
-  const answeredCount = messages.filter((m: any) => m.transcript).length;
+  // Prefer the backend's own counter (follow-ups do not advance it), falling back
+  // to counting answered transcripts before the first message arrives.
+  const answeredCount = typeof latestMsg?.current_index === 'number'
+    ? latestMsg.current_index
+    : messages.filter((m: any) => m.transcript).length;
   const progressPercent = Math.min((answeredCount / totalQuestions) * 100, 100);
 
   const handleDownloadReport = async () => {
@@ -424,7 +480,16 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
     }
   };
 
+  const handleRepeatQuestion = useCallback(() => {
+    const q = lastQuestionRef.current || currentQuestion;
+    if (!q || terminatedRef.current) return;
+    // Local replay for instant feedback + ask backend to echo (keeps WS/TTS in sync).
+    void speak(q).catch(() => undefined);
+  }, [speak, currentQuestion]);
+
   const connected = status === 'connected';
+
+  const terminated = terminatedReason !== null;
 
   return (
     <div className="max-w-5xl mx-auto space-y-4">
@@ -604,14 +669,23 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
             <div className="mt-auto pt-6">
               <div className="divider mb-6" />
 
+              {terminated && terminatedReason && (
+                <div className="mb-6 flex items-start gap-2 px-4 py-3 rounded-lg text-sm font-semibold" style={{ background: 'var(--danger-subtle)', border: '1px solid var(--danger-border)', color: 'var(--danger)' }} role="alert">
+                  <Ban className="w-5 h-5 shrink-0 mt-0.5" />
+                  <span>{terminatedReason}</span>
+                </div>
+              )}
+
               {isCompleted ? (
                 <div className="text-center space-y-4">
                   <span
                     className="inline-flex items-center gap-2 px-3 py-1 rounded-md text-sm font-semibold"
-                    style={{ background: 'var(--success-subtle)', color: 'var(--success)' }}
+                    style={terminated
+                      ? { background: 'var(--danger-subtle)', color: 'var(--danger)' }
+                      : { background: 'var(--success-subtle)', color: 'var(--success)' }}
                   >
-                    <Check className="w-4 h-4" />
-                    Interview complete
+                    {terminated ? <Ban className="w-4 h-4" /> : <Check className="w-4 h-4" />}
+                    {terminated ? 'Interview terminated' : 'Interview complete'}
                   </span>
                   <div>
                     <button onClick={handleDownloadReport} disabled={isDownloading} className="btn btn-primary mx-auto">
@@ -636,27 +710,45 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
                     value={textInput}
                     onChange={(e) => setTextInput(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-                    placeholder="Type your response..."
+                    placeholder="Type your response... (or type 'repeat the question')"
                     className="input flex-1"
-                    disabled={isProcessing}
+                    disabled={isProcessing || terminated}
                   />
                   <button
+                    onClick={handleRepeatQuestion}
+                    disabled={isProcessing || terminated}
+                    className="btn px-4"
+                    title="Repeat the current question"
+                    style={{ border: '1px solid var(--card-border)' }}
+                  >
+                    <Repeat className="w-5 h-5" />
+                  </button>
+                  <button
                     onClick={handleSendMessage}
-                    disabled={isProcessing}
+                    disabled={isProcessing || terminated}
                     className="btn btn-primary px-4"
                   >
                     {isProcessing ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
                   </button>
                 </div>
               ) : (
-                <div className="flex justify-center">
+                <div className="flex justify-center items-center gap-6">
+                  <button
+                    onClick={handleRepeatQuestion}
+                    disabled={isSpeaking || isProcessing || terminated}
+                    className="w-12 h-12 rounded-full flex items-center justify-center transition-colors"
+                    style={{ background: 'var(--overlay-light)', border: '1px solid var(--card-border)', color: 'var(--foreground-secondary)' }}
+                    title="Repeat the current question"
+                  >
+                    <Repeat className="w-5 h-5" />
+                  </button>
                   <div className="relative">
                     {isRecording && (
                       <div className="absolute inset-0 rounded-full pulse-ring" style={{ background: 'var(--danger-subtle)' }} />
                     )}
                     <button
                       onClick={toggleRecording}
-                      disabled={isSpeaking || isProcessing}
+                      disabled={isSpeaking || isProcessing || terminated}
                       className="relative w-20 h-20 rounded-full flex items-center justify-center transition-colors"
                       style={
                         isSpeaking || isProcessing
@@ -682,7 +774,7 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
 
         {/* Sidebar */}
         <div className="space-y-4">
-          <ProctorMonitor interviewId={interviewId} />
+          <ProctorMonitor interviewId={interviewId} onTerminated={handleTerminated} />
 
           {/* Candidate skills */}
           <div className="panel rounded-xl p-5 space-y-3">
