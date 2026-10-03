@@ -1,53 +1,89 @@
 # =============================================================================
-# Render Blueprint — AI Interviewer backend (FastAPI)
-# The frontend is deployed separately on Vercel.
-# Deploy via "New +" → Blueprint in the Render dashboard.
+# Render Blueprint — AI Interviewer backend (FastAPI + WebSockets)
+# Frontend is deployed separately on Vercel.
+#
+# Apply in the Render dashboard: New + → Blueprint → connect this repo.
+#
+# Shape chosen for a $0 deployment:
+#   * web service: free instance
+#   * database:    external free Postgres (Neon / Supabase), pasted into
+#                  DATABASE_URL. Render's own Postgres needs a payment method.
+#
+# Env vars marked `sync: false` are secrets: Render does not store a value in
+# this file, so the dashboard asks you for each one on the first deploy.
 # =============================================================================
 services:
   - type: web
     name: ai-interviewer-backend
     runtime: python
-    # Starter/Standard recommended: heavy deps (chromadb, sentence-transformers
-    # → torch, crewai, langgraph) OOM on the free 512MB tier.
-    plan: starter
-    # Build from repo root so requirements.txt is detected.
+    plan: free
+    # Build from the repo root so the root requirements.txt is detected.
     rootDir: .
     buildCommand: pip install -r requirements.txt
-    # Run from backend/ so `app.*` imports resolve; honor Render's $PORT.
+    # Run from backend/ so `app.*` imports resolve; Render assigns $PORT (10000).
     startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    # The root route answers 200 instantly and needs no DB round-trip.
     healthCheckPath: /
-    # NOTE (optional, plan step B3): to persist uploads/ and chroma_db/ across
-    # restarts, attach a Persistent Disk in the Render dashboard mounted at
-    # /opt/render/data, then CHROMA_PATH and UPLOAD_DIR below will use it.
-    # Without a disk these paths are ephemeral (recreated on each boot).
+    autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
-        value: "3.11"  # match your local venv version if it differs
-      # Mandatory — the app raises at import if this is missing/placeholder.
+        value: "3.11"
+      # Signs the JWTs. Render generates and stores a strong value on first
+      # deploy; the app refuses to start without a non-placeholder key.
       - key: SECRET_KEY
         generateValue: true
+
+      # ── Secrets you must paste in the dashboard ────────────────────────────
+      # Neon: use the *pooled* connection string — its host contains -pooler,
+      # e.g. ep-xxxx-pooler.<region>.aws.neon.tech — because a voice interview
+      # keeps one connection open for the whole session. Keep ?sslmode=require
+      # (Neon rejects plaintext) and make sure it starts with postgresql:// or
+      # postgres:// so SQLAlchemy selects the psycopg2 dialect.
       - key: DATABASE_URL
-        fromDatabase:
-          name: ai-interviewer-db
-          property: connectionString
-      - key: CHROMA_PATH
-        value: /opt/render/data/chroma_db
-      - key: UPLOAD_DIR
-        value: /opt/render/data/uploads
-      # Set to your actual Vercel URL (comma-separate multiple origins).
+        sync: false
+      # Exactly the origin Vercel serves the SPA from: https scheme, no trailing
+      # slash, no path. Comma-separate several (production + preview).
+      # Without this the browser blocks every API call (CORS).
       - key: BACKEND_CORS_ORIGINS
-        value: https://your-app.vercel.app
-      # Secrets: enter these in the Render dashboard (sync: false = not committed).
+        sync: false
+      # Powers question generation, answer evaluation, behavioral analysis and
+      # Whisper transcription. Everything still runs on fallbacks without it,
+      # but the interview quality drops to the static question bank.
       - key: GROQ_API_KEY
         sync: false
-      - key: DEEPGRAM_API_KEY
-        sync: false
-      - key: NVIDIA_API_KEY
-        sync: false
-      - key: DASHSCOPE_API_KEY
-        sync: false
+      # Deliberately omitted: DEEPGRAM_API_KEY, NVIDIA_API_KEY, DASHSCOPE_API_KEY,
+      # CHROMA_PATH and UPLOAD_DIR all have working defaults or graceful
+      # fallbacks, so the blueprint does not prompt for them. Add any of them
+      # later in Environment if you want those providers.
 
-databases:
-  - name: ai-interviewer-db
-    plan: starter
-    databaseName: interview_platform
+      # ── Tunables (defaults are fine; change only if needed) ────────────────
+      - key: MAX_FOLLOW_UPS_PER_QUESTION
+        value: "1"
+      - key: AUTH_RATE_LIMIT_PER_MINUTE
+        value: "10"
+      - key: GROQ_MODEL
+        value: "openai/gpt-oss-20b"
+      - key: GROQ_STT_MODEL
+        value: "whisper-large-v3"
+
+# No `databases:` block on purpose: that provisions a Render-managed Postgres,
+# which requires a payment method. The app creates its own schema on first boot
+# (Base.metadata.create_all + the idempotent _ensure_schema() column/index
+# upgrades in backend/app/main.py), so an empty Neon database is ready to use
+# as soon as it is pointed at DATABASE_URL.
+#
+# FREE-TIER LIMITS worth knowing before you demo this to anyone:
+#   1. The instance spins down after ~15 min without traffic; the next request
+#      takes ~50 s to cold-start and an in-progress WebSocket interview is
+#      dropped. useWebSocket reconnects every 3 s, so the candidate resumes
+#      where they left off (question progress is stored server-side).
+#      Keep-warm workaround: a UptimeRobot ping of https://<svc>.onrender.com/
+#      every 14 min, or upgrade this service to Starter ($7/mo) — no other
+#      change is needed.
+#   2. The filesystem is ephemeral: uploaded resumes under backend/uploads are
+#      lost on redeploy. Interview data itself is safe in Postgres. To keep
+#      files, upgrade to Starter and attach a Persistent Disk, then set
+#      UPLOAD_DIR to its mount path.
+#   3. 512 MB RAM. The trimmed requirements.txt no longer installs torch, so
+#      the running process sits well inside that; if it is ever OOM-killed,
+#      the fix is to switch plan, not to add dependencies back.

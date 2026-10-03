@@ -1,36 +1,34 @@
+# =============================================================================
+# Backend runtime dependencies (Render: `pip install -r requirements.txt`)
+#
+# This list is exactly what the code imports. Verified with an AST scan of
+# backend/app: nothing here is unused, and nothing imported is missing.
+# Removed as dead weight (zero imports anywhere in the repo): chromadb,
+# sentence-transformers (pulls ~2GB torch), crewai, agno, langgraph, PyPDF2,
+# soundfile, numpy, the bare `langchain` meta package. That cut the Render
+# build from 10-20 minutes (and the OOM risk flagged in the old render.yaml)
+# to a couple of minutes.
+# =============================================================================
+
+# Web framework & server
 fastapi
-uvicorn[standard]
+uvicorn[standard]      # [standard] already provides `websockets`
+python-multipart       # required for Form/File endpoints (interview setup)
+
+# Config
 pydantic
 pydantic-settings
 python-dotenv
 
-# AI & Orchestration
-langchain
-langchain-groq
-langgraph
-crewai
-agno
-chromadb
-sentence-transformers
-
 # Database
 sqlalchemy
-alembic
-psycopg2-binary
+psycopg2-binary        # Postgres driver for the prod DATABASE_URL (Neon/Supabase)
 
-# Voice & Utils
-deepgram-sdk
-edge-tts
-gTTS
-openai
-aiohttp
-aiofiles
-websockets
-httpx
-requests
-python-multipart
+# LLM orchestration (only langchain-core + langchain-groq are imported)
+langchain-core
+langchain-groq
 
-# Security
+# Auth & security
 python-jose[cryptography]
 passlib[bcrypt]
 # Pinned: passlib 1.7.4's bcrypt backend detection hashes a >72-byte secret,
@@ -39,17 +37,23 @@ passlib[bcrypt]
 # satisfies chromadb's bcrypt>=4.0.1 floor.
 bcrypt==4.0.1
 
-# Document Parsing
-PyPDF2
+# Voice: STT + TTS
+openai                 # Groq Whisper is called through the OpenAI-compatible client
+deepgram-sdk           # optional alternate STT provider
+edge-tts               # free TTS voice
+gTTS                   # fallback TTS
+
+# Document parsing & PDF report generation
 pdfplumber
+reportlab              # imported at module scope by app/utils/pdf_generator.py;
+                       # without it the app cannot even start
 
-# Scientific
-numpy
-soundfile
+# HTTP / async file IO
+httpx
+requests
+aiohttp
+aiofiles
 
-# Testing & Linting
+# Testing (CI runs backend/tests)
 pytest
 pytest-asyncio
-black
-flake8
-isort

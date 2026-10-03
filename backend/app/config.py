@@ -1,9 +1,16 @@
+import json
+import logging
 import os
 from typing import Optional, List
+from pydantic import field_validator
 from pydantic_settings import BaseSettings
 from dotenv import load_dotenv
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_DATABASE_URL = "sqlite:///./interview_platform.db"
 
 
 class Settings(BaseSettings):
@@ -38,18 +45,39 @@ class Settings(BaseSettings):
     LLM_HISTORY_TURNS: int = int(os.getenv("LLM_HISTORY_TURNS", "4"))
 
     # Database
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "sqlite:///./interview_platform.db")
+    # os.getenv only applies its fallback when the variable is absent, so a
+    # present-but-empty DATABASE_URL (a truncated paste into Render's prompt is
+    # the usual cause) reached create_engine("") and raised ArgumentError during
+    # module import — before uvicorn could bind $PORT, with a traceback that never
+    # named the env var. The validator normalises that to the SQLite default.
+    DATABASE_URL: str = os.getenv("DATABASE_URL", DEFAULT_DATABASE_URL)
     CHROMA_PATH: str = os.getenv("CHROMA_PATH", "./chroma_db")
+
+    @field_validator("DATABASE_URL", mode="before")
+    @classmethod
+    def _database_url_not_blank(cls, value):
+        raw = str(value or "").strip()
+        if not raw:
+            logger.warning(
+                "DATABASE_URL is set but empty; falling back to %s. Any data written "
+                "there is lost on the next redeploy — set the Neon pooled URL.",
+                DEFAULT_DATABASE_URL,
+            )
+            return DEFAULT_DATABASE_URL
+        return raw
 
     # CORS — comma-separated list of allowed origins
     # Defaults to local dev frontend; set to deployed URL(s) in production
-    BACKEND_CORS_ORIGINS: List[str] = [
-        o.strip() for o in os.getenv(
-            "BACKEND_CORS_ORIGINS",
-            "http://localhost:5173,http://127.0.0.1:5173",
-        ).split(",")
-        if o.strip()
-    ]
+    #
+    # Typed as str on purpose. pydantic-settings JSON-decodes any field annotated
+    # as a complex type (List[str]) BEFORE the class-body default runs, so
+    # BACKEND_CORS_ORIGINS=https://foo.vercel.app — exactly what the platform
+    # dashboard sets — raised SettingsError and killed startup. Use cors_origins
+    # to get the parsed list.
+    BACKEND_CORS_ORIGINS: str = os.getenv(
+        "BACKEND_CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    )
 
     # Security
     SECRET_KEY: str = os.getenv("SECRET_KEY")
@@ -62,6 +90,32 @@ class Settings(BaseSettings):
 
     class Config:
         case_sensitive = True
+
+    @property
+    def cors_origins(self) -> List[str]:
+        """Allowed origins, accepting either CSV or a JSON list.
+
+        Starlette matches the request's Origin header against these entries
+        *exactly*, and browsers never send a trailing slash — so an origin pasted
+        as "https://app.vercel.app/" would allow nothing at all while GET / still
+        returned 200 and Render reported a healthy deploy. Stripping the slash
+        makes the paste-tolerant form safe.
+        """
+        raw = (self.BACKEND_CORS_ORIGINS or "").strip()
+        if raw.startswith("["):
+            try:
+                origins = [str(o).strip().rstrip("/") for o in json.loads(raw) if str(o).strip()]
+            except (json.JSONDecodeError, TypeError, ValueError):
+                logger.warning("BACKEND_CORS_ORIGINS is not valid JSON; falling back to CSV split")
+                origins = [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
+        else:
+            origins = [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
+        if not origins:
+            logger.warning(
+                "BACKEND_CORS_ORIGINS parsed to an empty list: no frontend origin will be "
+                "allowed, so every browser call fails CORS even though the API is healthy"
+            )
+        return origins
 
 
 settings = Settings()

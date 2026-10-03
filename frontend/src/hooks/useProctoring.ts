@@ -42,22 +42,41 @@ async function tryLoadObjectModel(): Promise<typeof cachedModel> {
   if (cachedModel) return cachedModel;
   if (modelLoadAttempted) return null;
   modelLoadAttempted = true;
-  try {
-    // Variable specifiers + @vite-ignore keep the build working even when
-    // the optional tfjs packages are not installed; failure falls back
-    // gracefully to FaceDetector / basic mode.
-    const cocoName = '@tensorflow-models/coco-ssd';
-    const tfName = '@tensorflow/tfjs';
-    const coco = await import(/* @vite-ignore */ cocoName);
-    await import(/* @vite-ignore */ tfName);
-    const loader = (coco as unknown as { default?: unknown }).default ?? coco;
-    const loadFn = (loader as { load?: () => Promise<typeof cachedModel> }).load;
-    if (typeof loadFn !== 'function') return null;
-    cachedModel = await loadFn();
-    return cachedModel;
-  } catch {
-    return null;
+
+  // Literal specifiers are essential: Vite can only code-split an import() it
+  // can see at build time. A variable specifier (plus @vite-ignore) is left as a
+  // runtime fetch of the bare name, which 404s on Vercel and silently drops every
+  // session into tab-only mode — i.e. it would disable the device/face warnings.
+  // The variable-specifier attempt is kept purely as a fallback for installs that
+  // skip the optional tfjs packages, where the bundled import above cannot resolve.
+  const attempts: Array<() => Promise<unknown>> = [
+    async () => {
+      const tf = await import('@tensorflow/tfjs');
+      await tf.ready();
+      return import('@tensorflow-models/coco-ssd');
+    },
+    async () => {
+      const cocoName = '@tensorflow-models/coco-ssd';
+      const tfName = '@tensorflow/tfjs';
+      const coco = await import(/* @vite-ignore */ cocoName);
+      await import(/* @vite-ignore */ tfName);
+      return coco;
+    },
+  ];
+
+  for (const loadModule of attempts) {
+    try {
+      const coco = (await loadModule()) as unknown as { default?: unknown };
+      const loader = coco.default ?? coco;
+      const loadFn = (loader as { load?: () => Promise<typeof cachedModel> }).load;
+      if (typeof loadFn !== 'function') continue;
+      cachedModel = await loadFn();
+      return cachedModel;
+    } catch {
+      /* try the next strategy; failure falls back to FaceDetector / basic mode */
+    }
   }
+  return null;
 }
 
 function playWarningBeep(): void {

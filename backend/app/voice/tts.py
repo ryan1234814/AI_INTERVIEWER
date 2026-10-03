@@ -1,16 +1,20 @@
 import logging
 import os
-from deepgram import DeepgramClient, SpeakOptions
 from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+# The deepgram symbols are imported lazily, exactly as app/voice/stt.py does:
+# `SpeakOptions` does not exist in the deepgram SDK versions that pip installs
+# today, and a module-level import here would make this file unimportable.
 class DeepgramTTS:
     def __init__(self, api_key: str = settings.DEEPGRAM_API_KEY):
+        from deepgram import DeepgramClient
         self.client = DeepgramClient(api_key)
 
     async def text_to_speech(self, text: str, output_path: str = "output.mp3") -> str:
         try:
+            from deepgram import SpeakOptions
             options = SpeakOptions(
                 model="aura-helios-en",
                 encoding="mp3",
@@ -26,6 +30,7 @@ class DeepgramTTS:
     async def get_audio_stream(self, text: str) -> bytes:
         try:
             logger.info(f"Generating speech for text: {text[:50]}...")
+            from deepgram import SpeakOptions
             options = SpeakOptions(
                 model="aura-helios-en",
                 encoding="mp3",

@@ -24,8 +24,14 @@ _NEW_COLUMNS = [
 
 def _ensure_schema():
     """Create tables and add columns/indexes introduced after a database existed."""
-    Base.metadata.create_all(bind=engine)
     try:
+        # create_all lives inside the try deliberately: it is the first statement
+        # here that actually opens a connection, and Neon's serverless compute
+        # suspends while idle, so a DNS/TCP blip on the first boot after a quiet
+        # period is routine. Letting it escape aborted module import — and the
+        # whole deploy — over something the rest of this function treats as
+        # best-effort.
+        Base.metadata.create_all(bind=engine)
         inspector = inspect(engine)
         tables = set(inspector.get_table_names())
 
@@ -66,7 +72,7 @@ app = FastAPI(
 )
 
 # Set up CORS — strictly restricted to configured origins
-cors_origins = settings.BACKEND_CORS_ORIGINS
+cors_origins = settings.cors_origins
 logger.info("CORS allowed origins: %s", cors_origins)
 
 app.add_middleware(
