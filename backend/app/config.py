@@ -55,7 +55,7 @@ class Settings(BaseSettings):
 
     @field_validator("DATABASE_URL", mode="before")
     @classmethod
-    def _database_url_not_blank(cls, value):
+    def _normalise_database_url(cls, value):
         raw = str(value or "").strip()
         if not raw:
             logger.warning(
@@ -64,6 +64,14 @@ class Settings(BaseSettings):
                 DEFAULT_DATABASE_URL,
             )
             return DEFAULT_DATABASE_URL
+        # Name the driver we actually install. A bare postgresql:// URL resolved to
+        # psycopg2 under SQLAlchemy 2.0 but to psycopg (v3) in 2.1, so the same
+        # pasted Neon string booted locally and crashed on Render with
+        # "No module named 'psycopg'". The legacy postgres:// alias does not resolve
+        # at all on either line. An explicit +psycopg2 URL is version-independent.
+        for prefix in ("postgresql://", "postgres://"):
+            if raw.startswith(prefix):
+                return "postgresql+psycopg2://" + raw[len(prefix):]
         return raw
 
     # CORS — comma-separated list of allowed origins

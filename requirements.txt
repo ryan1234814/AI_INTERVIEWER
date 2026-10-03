@@ -21,7 +21,13 @@ pydantic-settings
 python-dotenv
 
 # Database
-sqlalchemy
+# Pinned to the 2.0 line: SQLAlchemy 2.1 changed the DBAPI behind a bare
+# `postgresql://` URL from psycopg2 to psycopg (v3), which is not a dependency
+# here, so an unpinned install made Render die at import with
+# "ModuleNotFoundError: No module named 'psycopg'" while 2.0.x worked locally.
+# app/config.py also rewrites the URL to the explicit +psycopg2 driver, so either
+# major version resolves the driver that is actually installed.
+sqlalchemy>=2.0,<2.1
 psycopg2-binary        # Postgres driver for the prod DATABASE_URL (Neon/Supabase)
 
 # LLM orchestration (only langchain-core + langchain-groq are imported)

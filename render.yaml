@@ -37,8 +37,11 @@ services:
       # Neon: use the *pooled* connection string — its host contains -pooler,
       # e.g. ep-xxxx-pooler.<region>.aws.neon.tech — because a voice interview
       # keeps one connection open for the whole session. Keep ?sslmode=require
-      # (Neon rejects plaintext) and make sure it starts with postgresql:// or
-      # postgres:// so SQLAlchemy selects the psycopg2 dialect.
+      # (Neon rejects plaintext). Paste it exactly as Neon gives it; app/config.py
+      # rewrites the scheme to postgresql+psycopg2:// so SQLAlchemy always loads
+      # the driver that is installed — a bare postgresql:// resolves to psycopg
+      # (v3) on SQLAlchemy 2.1 and crashed the boot with "No module named
+      # 'psycopg'", and the legacy postgres:// alias does not resolve at all.
       - key: DATABASE_URL
         sync: false
       # Exactly the origin Vercel serves the SPA from: https scheme, no trailing
