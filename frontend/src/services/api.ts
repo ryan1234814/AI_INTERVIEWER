@@ -69,7 +69,13 @@ export const getApiError = (error: unknown, fallback = 'Something went wrong'): 
     const loc = Array.isArray(first?.loc) ? first.loc.filter((p: unknown) => p !== 'body') : [];
     return loc.length ? `${loc.join('.')}: ${msg}` : msg;
   }
-  if (error.code === 'ERR_NETWORK') return 'Cannot reach the server. Please try again.';
+  // ERR_NETWORK is genuinely ambiguous from JavaScript: a rejected CORS preflight
+  // and an unreachable server look identical to the page. Say both — blaming only
+  // the server sent someone to the Render dashboard while the API was healthy and
+  // BACKEND_CORS_ORIGINS was simply unset.
+  if (error.code === 'ERR_NETWORK') {
+    return 'Cannot reach the server. If it is online, this browser origin is probably not allowed by CORS (set BACKEND_CORS_ORIGINS on the backend).';
+  }
   return fallback;
 };
 

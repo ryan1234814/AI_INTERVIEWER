@@ -44,11 +44,16 @@ services:
       # 'psycopg'", and the legacy postgres:// alias does not resolve at all.
       - key: DATABASE_URL
         sync: false
-      # Exactly the origin Vercel serves the SPA from: https scheme, no trailing
-      # slash, no path. Comma-separate several (production + preview).
-      # Without this the browser blocks every API call (CORS).
+      # Allowed browser origin(s). Deliberately NOT sync: false — an allowed
+      # origin is public information (it ships in every CORS response header), so
+      # keeping it in the manifest beats a dashboard prompt that is easy to skip.
+      # A blank value produces a *healthy-looking* deploy: GET / answers 200 and
+      # curl works, while every browser call dies on a rejected preflight and the
+      # SPA reports it as an unreachable server.
+      # Exact origin: https scheme, no trailing slash, no path. Append preview
+      # deployments comma-separated if they should reach the API too.
       - key: BACKEND_CORS_ORIGINS
-        sync: false
+        value: "https://ai-interviewer-qtbg.vercel.app"
       # Powers question generation, answer evaluation, behavioral analysis and
       # Whisper transcription. Everything still runs on fallbacks without it,
       # but the interview quality drops to the static question bank.
