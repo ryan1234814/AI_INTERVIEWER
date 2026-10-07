@@ -27,18 +27,20 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return 'dark';
   });
 
-  // Apply theme to <html> element and persist
+  // Apply theme to <html> element and persist. The initial attribute is set
+  // pre-paint by the inline script in index.html; this keeps it in sync on
+  // every change.
   useEffect(() => {
     const root = document.documentElement;
     root.setAttribute('data-theme', theme);
     localStorage.setItem('ai-interviewer-theme', theme);
-    
+
     // Also toggle a class for Tailwind dark mode
-    if (theme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
+    root.classList.toggle('dark', theme === 'dark');
+
+    // Keep the browser chrome color in step with the theme
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', theme === 'light' ? '#f6f4ef' : '#131211');
   }, [theme]);
 
   const toggleTheme = useCallback(() => {

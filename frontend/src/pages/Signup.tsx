@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowRight, Loader2, Mail, User, UserPlus, Lock } from 'lucide-react';
+import { ArrowRight, Loader2, Mail, User, Lock } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getApiError } from '../services/api';
 import {
@@ -67,15 +67,8 @@ const Signup: React.FC = () => {
       className="max-w-md mx-auto"
     >
       <div className="panel rounded-2xl p-8">
-        <div
-          className="w-11 h-11 rounded-lg flex items-center justify-center mb-5"
-          style={{ background: 'var(--accent-subtle)', border: '1px solid var(--accent-border)' }}
-        >
-          <UserPlus className="w-5 h-5" style={{ color: 'var(--accent-text)' }} />
-        </div>
-
         <span className="label-eyebrow">Get started</span>
-        <h1 className="text-2xl font-semibold tracking-tight mt-1">Create your account</h1>
+        <h1 className="font-display font-normal text-3xl tracking-tight mt-1">Create your account</h1>
         <p className="text-sm mt-2" style={{ color: 'var(--foreground-secondary)' }}>
           Every interview you run is private to your account.
         </p>

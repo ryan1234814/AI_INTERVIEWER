@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Mic, BarChart3, Upload, ArrowRight, ChevronLeft,
-  Lock, Target, Zap, Globe, ShieldCheck, FileText,
+  Mic, ArrowRight, ChevronLeft,
 } from 'lucide-react';
 import SetupInterview from '../components/Setup/SetupInterview';
 import InterviewSession from '../components/Interview/InterviewSession';
@@ -62,34 +61,33 @@ const Home: React.FC = () => {
 
   const backToLanding = () => setAppState('landing');
 
-  const stats = [
-    { value: '10x', label: 'Faster Screening', icon: Zap },
-    { value: '95%', label: 'Evaluation Accuracy', icon: Target },
-    { value: '50+', label: 'Role Integrations', icon: Globe },
-    { value: '24/7', label: 'Availability', icon: Lock },
+  // Honest process copy only — the product has no customer metrics yet, so
+  // there is no stats bar. These four steps describe the actual pipeline
+  // (agents in backend/app/agents, proctoring route, PDF report generator).
+  const steps = [
+    { n: 'Step 01', title: 'Brief the system', body: 'Paste the job description and upload the candidate resume.' },
+    { n: 'Step 02', title: 'Agents prepare', body: 'Role-tailoring, difficulty, and knowledge-retrieval agents assemble the question set.' },
+    { n: 'Step 03', title: 'Interview runs live', body: 'The interviewer speaks each question, transcribes the answer, and probes with follow-ups while proctoring watches session integrity.' },
+    { n: 'Step 04', title: 'Report is issued', body: 'Answers are validated and scored into a consistent PDF for the hiring committee.' },
   ];
 
   const features = [
     {
-      icon: Upload,
       title: 'Guided Setup',
       description: 'Upload job descriptions and resumes. Specialized agents tailor interview questions to the specific role.',
       action: startSetup as (() => void) | undefined,
     },
     {
-      icon: BarChart3,
       title: 'Real-time Analytics',
       description: 'Track candidate performance with detailed insights, completion rates, and downloadable PDF reports.',
       action: viewDashboard as (() => void) | undefined,
     },
     {
-      icon: ShieldCheck,
       title: 'Webcam Proctoring',
       description: 'On-device focus, distraction and device detection with an auditable integrity trail per interview.',
       action: undefined,
     },
     {
-      icon: FileText,
       title: 'Structured Reports',
       description: 'Every session produces a consistent, scored report ready for hiring-committee review.',
       action: viewDashboard as (() => void) | undefined,
@@ -119,9 +117,9 @@ const Home: React.FC = () => {
                   <span className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--accent-text)' }} />
                   AI Interview Platform
                 </span>
-                <h1 className="text-4xl md:text-5xl font-semibold tracking-tight leading-[1.1]">
+                <h1 className="font-display font-normal text-5xl md:text-6xl tracking-tight leading-[1.05]">
                   Structured, proctored technical interviews{' '}
-                  <span style={{ color: 'var(--accent-text)' }}>at scale</span>
+                  <span className="italic" style={{ color: 'var(--accent-text)' }}>at scale.</span>
                 </h1>
                 <p className="mt-5 text-lg leading-relaxed max-w-2xl" style={{ color: 'var(--foreground-secondary)' }}>
                   Run consistent voice-based interviews with a multi-agent system that generates questions,
@@ -140,51 +138,61 @@ const Home: React.FC = () => {
               </div>
             </section>
 
-            {/* Stats */}
-            <section className="grid grid-cols-2 md:grid-cols-4 gap-4 py-10">
-              {stats.map((stat, i) => (
-                <div key={i} className="panel rounded-xl p-5">
-                  <div className="flex items-center gap-2 mb-3">
-                    <stat.icon className="w-4 h-4" style={{ color: 'var(--accent-text)' }} />
-                    <span className="label-eyebrow">{stat.label}</span>
+            {/* Process — replaces the fabricated metrics bar with the real pipeline */}
+            <section className="py-12">
+              <p className="label-eyebrow mb-3">Process</p>
+              <h2 className="font-display font-normal text-2xl md:text-3xl tracking-tight">How an interview runs</h2>
+              <div className="mt-8 grid grid-cols-1 md:grid-cols-4 gap-x-6 gap-y-8">
+                {steps.map((step) => (
+                  <div key={step.n} className="border-t pt-4" style={{ borderColor: 'var(--card-border)' }}>
+                    <p className="text-[11px] font-medium tracking-[0.14em] uppercase" style={{ color: 'var(--accent-text)' }}>
+                      {step.n}
+                    </p>
+                    <h3 className="mt-2 text-sm font-semibold tracking-tight">{step.title}</h3>
+                    <p className="mt-1.5 text-sm leading-relaxed" style={{ color: 'var(--foreground-secondary)' }}>
+                      {step.body}
+                    </p>
                   </div>
-                  <p className="text-3xl font-semibold tabular-nums">{stat.value}</p>
-                </div>
-              ))}
+                ))}
+              </div>
             </section>
 
-            {/* Features */}
+            {/* Capabilities — editorial rows divided by hairlines, no icon tiles */}
             <section className="py-10">
-              <div className="mb-8">
-                <h2 className="text-2xl md:text-3xl font-semibold tracking-tight">Built for hiring teams</h2>
-                <p className="mt-2 max-w-2xl" style={{ color: 'var(--foreground-secondary)' }}>
-                  A complete interview platform with specialized agents working together.
-                </p>
-              </div>
+              <p className="label-eyebrow mb-3">Platform</p>
+              <h2 className="font-display font-normal text-2xl md:text-3xl tracking-tight">Built for hiring teams</h2>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="mt-6">
                 {features.map((feature, i) => (
                   <div
-                    key={i}
+                    key={feature.title}
                     onClick={feature.action}
-                    className={`panel hover-scale rounded-xl p-6 ${feature.action ? 'cursor-pointer' : ''}`}
+                    className={`grid grid-cols-1 md:grid-cols-12 gap-2 md:gap-8 items-baseline py-6 border-t ${
+                      i === features.length - 1 ? 'border-b' : ''
+                    } ${feature.action ? 'cursor-pointer' : ''}`}
+                    style={{ borderColor: 'var(--border-subtle)' }}
                   >
-                    <div
-                      className="w-10 h-10 rounded-lg flex items-center justify-center mb-4"
-                      style={{ background: 'var(--accent-subtle)', border: '1px solid var(--accent-border)' }}
-                    >
-                      <feature.icon className="w-5 h-5" style={{ color: 'var(--accent-text)' }} />
-                    </div>
-                    <h3 className="text-base font-semibold mb-1.5">{feature.title}</h3>
-                    <p className="text-sm leading-relaxed" style={{ color: 'var(--foreground-secondary)' }}>
+                    <span className="md:col-span-1 font-display italic text-lg leading-none" style={{ color: 'var(--foreground-tertiary)' }}>
+                      0{i + 1}
+                    </span>
+                    <h3 className="md:col-span-4 text-base font-semibold tracking-tight">{feature.title}</h3>
+                    <p className="md:col-span-6 text-sm leading-relaxed" style={{ color: 'var(--foreground-secondary)' }}>
                       {feature.description}
                     </p>
-                    {feature.action && (
-                      <div className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium" style={{ color: 'var(--accent-text)' }}>
-                        <span>Open</span>
-                        <ArrowRight className="w-4 h-4" />
-                      </div>
-                    )}
+                    <div className="md:col-span-1 flex md:justify-end">
+                      {feature.action ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); feature.action?.(); }}
+                          className="inline-flex items-center gap-1.5 text-sm font-medium hover:opacity-80 transition-opacity"
+                          style={{ color: 'var(--accent-text)' }}
+                        >
+                          <span>Open</span>
+                          <ArrowRight className="w-4 h-4" />
+                        </button>
+                      ) : (
+                        <span className="text-sm" style={{ color: 'var(--foreground-tertiary)' }}>—</span>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -194,7 +202,7 @@ const Home: React.FC = () => {
             <section className="py-10">
               <div className="panel rounded-2xl p-8 md:p-10 flex flex-col md:flex-row md:items-center justify-between gap-6">
                 <div>
-                  <h3 className="text-xl md:text-2xl font-semibold tracking-tight">Ready to run your first interview?</h3>
+                  <h3 className="font-display font-normal text-2xl md:text-3xl tracking-tight">Ready to run your first interview?</h3>
                   <p className="mt-2 text-sm" style={{ color: 'var(--foreground-secondary)' }}>
                     Set up a role, upload a resume, and start in under two minutes.
                   </p>

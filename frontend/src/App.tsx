@@ -6,11 +6,12 @@ import Dashboard from './pages/Dashboard'
 import ProtectedRoute from './components/ProtectedRoute'
 import ErrorBoundary from './components/ErrorBoundary'
 import { AuthProvider, useAuth } from './context/AuthContext'
-import { ThemeProvider } from './hooks/useTheme'
-import { Mic, LayoutDashboard, LogOut } from 'lucide-react'
+import { ThemeProvider, useTheme } from './hooks/useTheme'
+import { LayoutDashboard, LogOut, Sun, Moon } from 'lucide-react'
 
 function AppContent() {
   const { user, isAuthenticated, loading, logout } = useAuth()
+  const { theme, toggleTheme } = useTheme()
   const navigate = useNavigate()
 
   // While a stored token is still being verified we know nothing about the
@@ -27,21 +28,28 @@ function AppContent() {
       {/* Header */}
       <header className="sticky top-0 z-50 border-b" style={{ background: 'var(--background-secondary)', borderColor: 'var(--card-border)' }}>
         <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-          {/* Logo */}
-          <Link to="/" className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ background: 'var(--accent)' }}>
-              <Mic className="w-4 h-4 text-white" />
-            </div>
-            <div className="flex flex-col leading-none">
-              <span className="text-[15px] font-semibold tracking-tight">Agentic AI</span>
-              <span className="text-[10px] font-medium tracking-[0.18em] uppercase" style={{ color: 'var(--foreground-tertiary)' }}>
-                Interviewer
-              </span>
-            </div>
+          {/* Logo — typographic masthead instead of an icon tile */}
+          <Link to="/" className="flex flex-col leading-none">
+            <span className="font-display text-[22px] tracking-tight" style={{ color: 'var(--foreground)' }}>
+              Agentic AI<span style={{ color: 'var(--accent)' }}>.</span>
+            </span>
+            <span className="mt-1 text-[9.5px] font-medium tracking-[0.24em] uppercase" style={{ color: 'var(--foreground-tertiary)' }}>
+              Interviewer
+            </span>
           </Link>
 
           {/* Nav */}
           <nav className="flex items-center gap-2">
+            {/* Theme toggle is available to everyone, signed in or not */}
+            <button
+              onClick={toggleTheme}
+              className="icon-btn mr-1"
+              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {theme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+            </button>
+
             {!sessionPending && !isAuthenticated && (
               <>
                 <Link to="/login" className="btn btn-ghost">
@@ -108,11 +116,13 @@ function AppContent() {
       <footer className="border-t mt-16" style={{ borderColor: 'var(--border-subtle)' }}>
         <div className="max-w-7xl mx-auto px-6 py-8">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-md flex items-center justify-center" style={{ background: 'var(--overlay-light)', border: '1px solid var(--card-border)' }}>
-                <Mic className="w-3.5 h-3.5" style={{ color: 'var(--accent-text)' }} />
-              </div>
-              <span className="text-sm font-medium" style={{ color: 'var(--foreground-secondary)' }}>Agentic AI Interviewer</span>
+            <div className="flex items-baseline gap-2">
+              <span className="font-display text-lg" style={{ color: 'var(--foreground-secondary)' }}>
+                Agentic AI<span style={{ color: 'var(--accent-text)' }}>.</span>
+              </span>
+              <span className="text-[9.5px] font-medium tracking-[0.24em] uppercase" style={{ color: 'var(--foreground-tertiary)' }}>
+                Interviewer
+              </span>
             </div>
             <div className="flex items-center gap-6 text-sm" style={{ color: 'var(--foreground-tertiary)' }}>
               <a href="#" className="hover:opacity-80 transition-opacity">Privacy</a>

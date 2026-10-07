@@ -14,19 +14,19 @@ export default {
         'foreground-secondary': 'var(--foreground-secondary)',
         'foreground-tertiary': 'var(--foreground-tertiary)',
         card: 'var(--card-solid)',
-        surface: '#111725',
+        surface: '#1c1b19',
         border: 'var(--card-border)',
-        // Accent — indigo
+        // Accent — cobalt
         primary: {
-          DEFAULT: '#4f46e5',
-          dark: '#4338ca',
-          light: '#6366f1',
-          subtle: '#a5b4fc',
+          DEFAULT: '#2f62c9',
+          dark: '#2857b0',
+          light: '#4f7edb',
+          subtle: '#93b4f2',
         },
         accent: {
-          DEFAULT: '#4f46e5',
-          dark: '#4338ca',
-          light: '#6366f1',
+          DEFAULT: '#2f62c9',
+          dark: '#2857b0',
+          light: '#4f7edb',
         },
         // Semantic
         success: {
@@ -46,7 +46,7 @@ export default {
         },
         // Kept so any residual utility usage stays on-palette (muted)
         cyan: { DEFAULT: '#0891b2', light: '#22d3ee' },
-        purple: { DEFAULT: '#6366f1', light: '#818cf8' },
+        purple: { DEFAULT: '#4f7edb', light: '#93b4f2' },
         pink: { DEFAULT: '#db2777', light: '#f472b6' },
         amber: { DEFAULT: '#f59e0b', light: '#fbbf24' },
         emerald: { DEFAULT: '#10b981', light: '#34d399' },
@@ -54,7 +54,7 @@ export default {
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
         mono: ['JetBrains Mono', 'ui-monospace', 'monospace'],
-        display: ['Inter', 'sans-serif'],
+        display: ['"Instrument Serif"', 'Georgia', 'serif'],
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-out forwards',
@@ -85,7 +85,7 @@ export default {
         'panel': '0 1px 2px rgba(0,0,0,0.4), 0 8px 24px -12px rgba(0,0,0,0.55)',
         'panel-hover': '0 1px 2px rgba(0,0,0,0.5), 0 12px 32px -12px rgba(0,0,0,0.65)',
         'elevation-sm': '0 1px 2px rgba(0,0,0,0.4)',
-        'accent-ring': '0 0 0 3px rgba(79,70,229,0.14)',
+        'accent-ring': '0 0 0 3px rgba(47,98,201,0.18)',
       },
       borderRadius: {
         '4xl': '2rem',

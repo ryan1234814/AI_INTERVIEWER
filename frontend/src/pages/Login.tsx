@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowRight, Loader2, LogIn, Mail, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Loader2, Mail, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { getApiError } from '../services/api';
 import { FieldErrors, validateLogin } from '../utils/authValidation';
@@ -47,15 +47,8 @@ const Login: React.FC = () => {
       className="max-w-md mx-auto"
     >
       <div className="panel rounded-2xl p-8">
-        <div
-          className="w-11 h-11 rounded-lg flex items-center justify-center mb-5"
-          style={{ background: 'var(--accent-subtle)', border: '1px solid var(--accent-border)' }}
-        >
-          <LogIn className="w-5 h-5" style={{ color: 'var(--accent-text)' }} />
-        </div>
-
         <span className="label-eyebrow">Welcome back</span>
-        <h1 className="text-2xl font-semibold tracking-tight mt-1">Sign in to your dashboard</h1>
+        <h1 className="font-display font-normal text-3xl tracking-tight mt-1">Sign in to your dashboard</h1>
         <p className="text-sm mt-2" style={{ color: 'var(--foreground-secondary)' }}>
           Your interviews, candidates and reports — visible only to you.
         </p>

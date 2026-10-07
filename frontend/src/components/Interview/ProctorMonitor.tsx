@@ -30,7 +30,7 @@ const TONE: Record<Tone, { bg: string; border: string; color: string }> = {
 
 function focusColor(pct: number): string {
   if (pct >= 85) return '#10b981';
-  if (pct >= 70) return '#6366f1';
+  if (pct >= 70) return '#4f7edb';
   if (pct >= 50) return '#f59e0b';
   return '#ef4444';
 }
@@ -64,7 +64,7 @@ const ProctorMonitor: React.FC<Props> = ({ interviewId, onTerminated }) => {
         </button>
       </div>
 
-      {/* Camera preview */}
+      {/* Camera preview — letterbox stays dark in both themes (video surface) */}
       <div className="relative rounded-lg overflow-hidden aspect-video" style={{ background: '#05080f', border: '1px solid var(--card-border)' }}>
         <video ref={videoRef} muted playsInline className="w-full h-full object-cover mirror" />
         {!snapshot.cameraOn && (

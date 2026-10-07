@@ -54,7 +54,7 @@ const BehavioralInsights: React.FC<Props> = ({ behavioral, compact }) => {
         <ScoreBar label="Confidence" value={behavioral.confidence} icon={<Zap className="w-3 h-3" />} fill="var(--accent)" />
         <ScoreBar label="STAR Structure" value={behavioral.star_structure} icon={<Star className="w-3 h-3" />} fill="var(--warning)" />
         <ScoreBar label="Empathy / Teamwork" value={behavioral.empathy_teamwork} icon={<Users className="w-3 h-3" />} fill="var(--success)" />
-        <ScoreBar label="Sentiment" value={behavioral.sentiment} icon={<Heart className="w-3 h-3" />} fill="var(--accent-light, #6366f1)" />
+        <ScoreBar label="Sentiment" value={behavioral.sentiment} icon={<Heart className="w-3 h-3" />} fill="var(--accent)" />
       </div>
 
       <div className="grid grid-cols-3 gap-2 pt-2 border-t" style={{ borderColor: 'var(--border-subtle)' }}>

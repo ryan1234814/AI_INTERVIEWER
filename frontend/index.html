@@ -4,12 +4,27 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="description" content="Agentic AI Voice Interview Platform — conduct intelligent, natural voice-based interviews with a multi-agent system powered by Llama 3 & Deepgram." />
-    <meta name="theme-color" content="#0a0e16" />
+    <meta name="description" content="Agentic AI Voice Interview Platform — structured, proctored voice interviews with a multi-agent system that generates questions, validates answers, and scores every candidate consistently." />
+    <meta name="theme-color" content="#131211" />
+    <!-- Apply the saved/system theme before first paint so there is no flash
+         of the wrong theme while React boots (mirrors hooks/useTheme). -->
+    <script>
+      (function () {
+        var stored = localStorage.getItem('ai-interviewer-theme');
+        var theme = (stored === 'light' || stored === 'dark')
+          ? stored
+          : (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        var root = document.documentElement;
+        root.setAttribute('data-theme', theme);
+        root.classList.toggle('dark', theme === 'dark');
+        var meta = document.querySelector('meta[name="theme-color"]');
+        if (meta) meta.setAttribute('content', theme === 'light' ? '#f6f4ef' : '#131211');
+      })();
+    </script>
     <!-- Preload fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
     <title>Agentic AI Interviewer — Voice-Powered Technical Interviews</title>
   </head>
   <body>

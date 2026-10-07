@@ -610,7 +610,7 @@ const InterviewSession: React.FC<Props> = ({ interviewId }) => {
                             animate={{ height: [8, 28 + Math.random() * 12, 12, 24, 8] }}
                             transition={{ duration: 1 + Math.random() * 0.4, repeat: Infinity, delay: i * 0.05 }}
                             className="w-[3px] rounded-full"
-                            style={{ background: 'var(--accent-light, #6366f1)' }}
+                            style={{ background: 'var(--accent)' }}
                           />
                         ))}
                       </div>
