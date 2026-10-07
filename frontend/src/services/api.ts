@@ -305,4 +305,62 @@ export const getProctorSummary = async (interviewId: number) => {
   return response.data;
 };
 
+export interface InterviewAnalytics {
+  interview: {
+    id: number;
+    status: string;
+    total_questions: number;
+    current_question_index: number;
+    started_at: string | null;
+    completed_at: string | null;
+    job_title: string;
+    candidate_name: string;
+  };
+  per_question: {
+    n: number;
+    question: string;
+    score: number | null;
+    clarity: number | null;
+    confidence: number | null;
+    star: number | null;
+    sentiment_label: string | null;
+    wpm: number | null;
+    filler_rate: number | null;
+  }[];
+  evaluation: {
+    overall_score: number | null;
+    technical_score: number | null;
+    communication_score: number | null;
+    relevance_score: number | null;
+    avg_clarity: number | null;
+    avg_confidence: number | null;
+    avg_star: number | null;
+    avg_filler_rate: number | null;
+    avg_wpm: number | null;
+    behavioral_summary: Record<string, unknown> | null;
+  } | null;
+  proctor: {
+    timeline: { t: string | null; event_type: string; focus_score: number | null }[];
+    summary: {
+      total_events: number;
+      counts: Record<string, number>;
+      warnings: number;
+      avg_focus: number | null;
+      focus_pct: number;
+      integrity: string;
+    } | null;
+  };
+  candidate_history: {
+    interview_id: number;
+    date: string | null;
+    overall_score: number | null;
+    is_current: boolean;
+  }[];
+}
+
+export const getInterviewAnalytics = async (interviewId: number): Promise<InterviewAnalytics> => {
+  const response = await api.get(`/interviews/${interviewId}/analytics`);
+  return response.data;
+};
+
 export default api;

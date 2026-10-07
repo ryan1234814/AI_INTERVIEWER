@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Users,
+  Activity,
   CheckCircle,
   Clock3,
   XCircle,
@@ -10,6 +11,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { listInterviews, downloadReport } from '../../services/api';
+import SessionAnalytics from './SessionAnalytics';
 
 interface Interview {
   id: number;
@@ -36,6 +38,8 @@ const InterviewDashboard: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  // One expanded analytics panel at a time (it fetches its own series).
+  const [analyticsId, setAnalyticsId] = useState<number | null>(null);
 
   useEffect(() => {
     loadInterviews();
@@ -179,9 +183,10 @@ const InterviewDashboard: React.FC = () => {
             {filteredInterviews.map((interview) => {
               const tone = TONE[statusTone(interview.status)];
               const progress = getProgressPercentage(interview);
+              const expanded = analyticsId === interview.id;
               return (
+                <div key={interview.id}>
                 <div
-                  key={interview.id}
                   className="px-5 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4 transition-colors hover:bg-[var(--overlay-lighter)]"
                   style={{ borderColor: 'var(--border-subtle)' }}
                 >
@@ -228,6 +233,15 @@ const InterviewDashboard: React.FC = () => {
                     </span>
 
                     <button
+                      onClick={() => setAnalyticsId(expanded ? null : interview.id)}
+                      className="icon-btn"
+                      title={expanded ? 'Hide progress charts' : 'View progress charts'}
+                      aria-expanded={expanded}
+                    >
+                      <Activity className="w-4 h-4" />
+                    </button>
+
+                    <button
                       onClick={() => handleDownload(interview)}
                       disabled={interview.status !== 'completed' || downloadingId === interview.id}
                       className="icon-btn"
@@ -240,6 +254,12 @@ const InterviewDashboard: React.FC = () => {
                       )}
                     </button>
                   </div>
+                </div>
+                {expanded && (
+                  <div className="px-5 pb-4" style={{ background: 'var(--overlay-lighter)' }}>
+                    <SessionAnalytics interviewId={interview.id} />
+                  </div>
+                )}
                 </div>
               );
             })}

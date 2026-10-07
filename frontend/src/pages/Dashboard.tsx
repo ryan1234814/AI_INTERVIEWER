@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import {
+  Activity,
   AlertCircle,
   CheckCircle,
   ClipboardList,
@@ -13,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { InterviewListItem, downloadReport, getApiError, listInterviews } from '../services/api';
+import SessionAnalytics from '../components/Dashboard/SessionAnalytics';
 
 type Tone = 'success' | 'warning' | 'accent' | 'neutral';
 
@@ -45,6 +47,9 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  // Only one analytics panel open at a time — each panel fetches its own
+  // series, so keeping them single avoids a stampede of /analytics calls.
+  const [analyticsId, setAnalyticsId] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -194,6 +199,7 @@ const Dashboard: React.FC = () => {
                   <th className="px-5 py-3 font-medium label-eyebrow">Status</th>
                   <th className="px-5 py-3 font-medium label-eyebrow">Progress</th>
                   <th className="px-5 py-3 font-medium label-eyebrow">Started</th>
+                  <th className="px-5 py-3 font-medium label-eyebrow">Analytics</th>
                   <th className="px-5 py-3 font-medium label-eyebrow text-right">Report</th>
                 </tr>
               </thead>
@@ -204,10 +210,11 @@ const Dashboard: React.FC = () => {
                     interview.total_questions > 0
                       ? Math.round((interview.current_question_index / interview.total_questions) * 100)
                       : 0;
+                  const expanded = analyticsId === interview.id;
 
                   return (
+                    <React.Fragment key={interview.id}>
                     <tr
-                      key={interview.id}
                       className="transition-colors hover:bg-[var(--overlay-lighter)]"
                       style={{ borderColor: 'var(--border-subtle)' }}
                     >
@@ -269,6 +276,16 @@ const Dashboard: React.FC = () => {
                             })
                           : 'Not started'}
                       </td>
+                      <td className="px-5 py-4">
+                        <button
+                          onClick={() => setAnalyticsId(expanded ? null : interview.id)}
+                          className="icon-btn"
+                          title={expanded ? 'Hide progress charts' : 'View progress charts'}
+                          aria-expanded={expanded}
+                        >
+                          <Activity className="w-4 h-4" />
+                        </button>
+                      </td>
                       <td className="px-5 py-4 text-right">
                         <button
                           onClick={() => handleDownload(interview)}
@@ -288,6 +305,14 @@ const Dashboard: React.FC = () => {
                         </button>
                       </td>
                     </tr>
+                    {expanded && (
+                      <tr style={{ background: 'var(--overlay-lighter)' }}>
+                        <td colSpan={7} className="px-6 pb-4">
+                          <SessionAnalytics interviewId={interview.id} />
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
                   );
                 })}
               </tbody>

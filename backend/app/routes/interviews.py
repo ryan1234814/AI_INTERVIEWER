@@ -185,6 +185,144 @@ async def get_interview(
     }
 
 
+def _as_float(value) -> Optional[float]:
+    try:
+        return round(float(value), 2) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+@router.get("/{interview_id}/analytics")
+async def get_interview_analytics(
+    interview_id: int,
+    db: Session = Depends(get_db),
+    current_user: Optional[models.User] = Depends(get_current_user),
+):
+    """Time-series data for per-session progress charts.
+
+    Only real answers are plotted: placeholder rows (empty candidate_response,
+    created when a question is first asked) are skipped, and unanswered
+    questions simply leave gaps in the series instead of being padded with
+    invented zeros.
+    """
+    interview = crud.get_interview(db, interview_id)
+    if not interview:
+        raise HTTPException(status_code=404, detail="Interview not found")
+    assert_owner(interview.user_id, current_user)
+
+    job = db.query(models.JobDescription).filter(models.JobDescription.id == interview.job_id).first()
+    candidate = db.query(models.Candidate).filter(models.Candidate.id == interview.candidate_id).first()
+
+    responses = db.query(models.InterviewResponse).filter(
+        models.InterviewResponse.interview_id == interview_id,
+        models.InterviewResponse.candidate_response != "",
+        models.InterviewResponse.candidate_response.isnot(None),
+    ).order_by(models.InterviewResponse.id.asc()).all()
+
+    per_question = []
+    for n, r in enumerate(responses, start=1):
+        ba = r.behavioral_analysis
+        if isinstance(ba, str):
+            try:
+                ba = json.loads(ba)
+            except (json.JSONDecodeError, TypeError):
+                ba = None
+        ba = ba if isinstance(ba, dict) else {}
+        per_question.append({
+            "n": n,
+            "question": (r.question_text or "")[:90],
+            "score": _as_float(r.evaluation_score),
+            "clarity": _as_float(r.clarity_score if r.clarity_score is not None else ba.get("clarity")),
+            "confidence": _as_float(r.confidence_score if r.confidence_score is not None else ba.get("confidence")),
+            "star": _as_float(ba.get("star_structure")),
+            "sentiment_label": r.sentiment_label,
+            "wpm": _as_float(r.wpm),
+            "filler_rate": _as_float(r.filler_rate),
+        })
+
+    evaluation = db.query(models.Evaluation).filter(
+        models.Evaluation.interview_id == interview_id
+    ).first()
+
+    # Compact proctoring timeline (bounded so long heartbeat streams stay light).
+    proctor = {"timeline": [], "summary": None}
+    try:
+        from app.services import proctoring as proctor_svc
+        events = db.query(models.ProctorEvent).filter(
+            models.ProctorEvent.interview_id == interview_id
+        ).order_by(models.ProctorEvent.id.asc()).all()
+        proctor["summary"] = proctor_svc.summarize_events(events)
+        # Heartbeats are periodic noise; keep every signal event and thin
+        # heartbeats so the bounded timeline still shows real incidents.
+        signals = [e for e in events if e.event_type != "heartbeat"]
+        heartbeats = [e for e in events if e.event_type == "heartbeat"][::10]
+        timeline_events = sorted(signals + heartbeats, key=lambda e: e.id)[-200:]
+        proctor["timeline"] = [
+            {
+                "t": e.created_at.isoformat() if e.created_at else None,
+                "event_type": e.event_type,
+                "focus_score": _as_float(e.focus_score),
+            }
+            for e in timeline_events
+        ]
+    except Exception as e:
+        logger.warning(f"Proctor timeline for analytics failed: {e}")
+
+    # Same candidate's previously scored sessions (this owner only — matches the
+    # data-isolation rules used by the list/detail endpoints) for the trend chart.
+    candidate_history = []
+    if interview.candidate_id:
+        prior = (
+            db.query(models.Interview, models.Evaluation)
+            .join(models.Evaluation, models.Evaluation.interview_id == models.Interview.id)
+            .filter(
+                models.Interview.candidate_id == interview.candidate_id,
+                models.Interview.status == "completed",
+            )
+            .order_by(models.Interview.started_at.asc())
+            .all()
+        )
+        if current_user is not None:
+            prior = [row for row in prior if row[0].user_id == interview.user_id]
+        candidate_history = [
+            {
+                "interview_id": iv.id,
+                "date": iv.completed_at.isoformat() if iv.completed_at else (iv.started_at.isoformat() if iv.started_at else None),
+                "overall_score": _as_float(ev.overall_score),
+                "is_current": iv.id == interview_id,
+            }
+            for iv, ev in prior
+        ]
+
+    return {
+        "interview": {
+            "id": interview.id,
+            "status": interview.status,
+            "total_questions": interview.total_questions,
+            "current_question_index": interview.current_question_index,
+            "started_at": interview.started_at.isoformat() if interview.started_at else None,
+            "completed_at": interview.completed_at.isoformat() if interview.completed_at else None,
+            "job_title": job.title if job else "Unknown",
+            "candidate_name": candidate.name if candidate else "Unknown",
+        },
+        "per_question": per_question,
+        "evaluation": {
+            "overall_score": _as_float(evaluation.overall_score),
+            "technical_score": _as_float(evaluation.technical_score),
+            "communication_score": _as_float(evaluation.communication_score),
+            "relevance_score": _as_float(evaluation.relevance_score),
+            "avg_clarity": _as_float(evaluation.avg_clarity),
+            "avg_confidence": _as_float(evaluation.avg_confidence),
+            "avg_star": _as_float(evaluation.avg_star),
+            "avg_filler_rate": _as_float(evaluation.avg_filler_rate),
+            "avg_wpm": _as_float(evaluation.avg_wpm),
+            "behavioral_summary": evaluation.behavioral_summary,
+        } if evaluation else None,
+        "proctor": proctor,
+        "candidate_history": candidate_history,
+    }
+
+
 @router.post("/setup")
 async def setup_interview(
     resume: UploadFile = File(...),
