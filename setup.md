@@ -174,7 +174,7 @@ curl https://<service>.onrender.com/api/v1/auth/me   # expect 401 {"detail":"Not
 
 | Limit | Effect | Fix |
 |---|---|---|
-| Instance sleeps after ~15 min | first request takes ~50 s; a live interview's WebSocket drops | point a free UptimeRobot monitor at `https://<service>.onrender.com/` every 14 min, or switch `render.yaml` to `plan: starter` |
+| Instance sleeps after ~15 min | first request takes ~50 s; a live interview's WebSocket drops | already handled: `.github/workflows/keep-alive.yml` pings the backend (and the Vercel SPA) every 5 min from GitHub Actions. On a differently named service, edit the URLs in that workflow. For a CI-independent guarantee, switch `render.yaml` to `plan: starter` |
 | Ephemeral filesystem | uploaded resume PDFs disappear on each redeploy (interview data is safe in Postgres) | `plan: starter` + a Persistent Disk, with `UPLOAD_DIR` set to its mount path |
 | In-process auth rate limiting | the per-minute login limit is per instance | irrelevant on one instance; use a shared store if you ever scale out |
 | WebSocket has no JWT yet | anyone who guesses an interview id could drive that session | authenticate the socket (`?token=` plus a `decode_token` check in `backend/app/routes/websocket.py`) before sharing the URL publicly |

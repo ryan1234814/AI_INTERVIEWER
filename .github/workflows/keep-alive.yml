@@ -1,0 +1,62 @@
+# =============================================================================
+# Keep-alive — keeps both halves of the deployment warm.
+#
+# Why this exists: the Render free instance stops after ~15 minutes without
+# traffic. The next request then pays a ~50 s cold start, and an interview that
+# was in progress loses its WebSocket while the box wakes up. A periodic ping
+# from CI keeps the backend serving, so the deployed SPA
+# (https://ai-interviewer-qtbg.vercel.app) always finds a live API.
+#
+# The frontend on Vercel does not sleep, but it is pinged in the same run so a
+# broken deploy of either half shows up in one place.
+#
+# Caveat worth remembering: GitHub pauses scheduled workflows after 60 days of
+# repository inactivity — any push to the default branch resets that clock.
+# =============================================================================
+name: Keep-alive
+
+on:
+  schedule:
+    # Every 5 minutes, comfortably inside Render's ~15-minute idle window even
+    # when a scheduled run is delayed under load.
+    - cron: "*/5 * * * *"
+  # Lets you fire a ping on demand from the Actions tab.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: keep-alive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BACKEND_URL: https://ai-interviewer-backend.onrender.com
+      FRONTEND_URL: https://ai-interviewer-qtbg.vercel.app
+    steps:
+      - name: Ping backend until it answers 200
+        # Retries matter here: the attempt that catches a sleeping instance is
+        # also the one that has to wait out the cold start. `|| true` keeps a
+        # curl timeout (exit 28) from tripping `bash -e` and skipping the retry.
+        run: |
+          for attempt in 1 2 3; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 90 "$BACKEND_URL/" || true)
+            echo "backend attempt $attempt -> HTTP $code"
+            if [ "$code" = "200" ]; then exit 0; fi
+            sleep 15
+          done
+          echo "::error::backend did not return 200 after 3 attempts" >&2
+          exit 1
+
+      - name: Ping frontend
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$FRONTEND_URL/" || true)
+          echo "frontend -> HTTP $code"
+          if [ "$code" != "200" ]; then
+            echo "::error::frontend did not return 200" >&2
+            exit 1
+          fi

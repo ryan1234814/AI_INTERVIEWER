@@ -85,9 +85,12 @@ services:
 #      takes ~50 s to cold-start and an in-progress WebSocket interview is
 #      dropped. useWebSocket reconnects every 3 s, so the candidate resumes
 #      where they left off (question progress is stored server-side).
-#      Keep-warm workaround: a UptimeRobot ping of https://<svc>.onrender.com/
-#      every 14 min, or upgrade this service to Starter ($7/mo) — no other
-#      change is needed.
+#      Handled for you: .github/workflows/keep-alive.yml pings
+#      https://ai-interviewer-backend.onrender.com/ every 5 min from CI, so the
+#      instance never reaches the idle timeout. Upgrade to Starter ($7/mo) if
+#      you want it to survive a CI outage too — no other change is needed.
+#      (Ping a differently named service from the repo's Actions variables, or
+#      edit the URLs in that workflow.)
 #   2. The filesystem is ephemeral: uploaded resumes under backend/uploads are
 #      lost on redeploy. Interview data itself is safe in Postgres. To keep
 #      files, upgrade to Starter and attach a Persistent Disk, then set
