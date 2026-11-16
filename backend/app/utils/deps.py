@@ -3,15 +3,19 @@
 import logging
 from typing import Optional
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.database import models
 from app.database.session import get_db  # re-exported: `from app.utils.deps import get_db`
-from app.utils.security import decode_token
+from app.utils.security import decode_token, invalidate_all_for_user
 
 logger = logging.getLogger(__name__)
+
+# `invalidate_all_for_user` is re-exported above so the password-change handler
+# can `from app.utils.deps import invalidate_all_for_user` without reaching into
+# security.py's internals.
 
 # tokenUrl points at the real login route so Swagger's "Authorize" works.
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -94,3 +98,54 @@ def assert_owner(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Not enough permissions for this resource",
         )
+
+
+def get_current_websocket_user(
+    db: Session = Depends(get_db),
+    token: Optional[str] = Query(None),
+) -> Optional[models.User]:
+    """Resolve the `?token=` query param on a WebSocket handshake to a User.
+
+    A WebSocket handshake carries no Authorization header, so the client
+    attaches the JWT as `?token=<jwt>` when it opens the connection. If a token
+    is present we validate it exactly like an HTTP bearer token and 401 on
+    failure; if absent we return None (legacy, unauthenticated behavior —
+    callers MUST still refuse writes until authentication is implemented).
+
+    This is the bridge referenced in the security pipeline for Phase 3.
+    """
+    if not token:
+        logger.info("WebSocket without token — not authenticated")
+        return None
+    payload = decode_token(token)
+    if not payload:
+        logger.warning("WebSocket token rejected for interview")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="WebSocket connection not authorized",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    subject = payload.get("sub")
+    if subject is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="WebSocket connection not authorized",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    user: Optional[models.User] = None
+    try:
+        user = db.query(models.User).filter(models.User.id == int(subject)).first()
+    except (TypeError, ValueError):
+        user = (
+            db.query(models.User)
+            .filter(models.User.email == str(subject).lower())
+            .first()
+        )
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="WebSocket connection not authorized",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    logger.info("WebSocket authenticated: user=%d", user.id)
+    return user
